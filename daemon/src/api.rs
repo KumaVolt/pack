@@ -68,7 +68,49 @@ pub fn router(app: Shared) -> Router {
         .route("/api/setup", post(setup))
         .route("/api/bootstrap", post(bootstrap))
         .route("/api/restart", post(restart))
+        .route("/api/shutdown", post(shutdown))
+        .route("/api/open", post(open_url))
+        .layer(axum::middleware::from_fn(guard_origin))
         .with_state(app)
+}
+
+/// Origins allowed to use the API from a browser context: the desktop app
+/// (tauri://localhost on macOS/Linux, http(s)://tauri.localhost on Windows) and
+/// the dashboard itself. Anything else — e.g. a website trying to drive the
+/// local API — is refused.
+const APP_ORIGINS: &[&str] = &["tauri://localhost", "http://tauri.localhost", "https://tauri.localhost"];
+
+async fn guard_origin(req: axum::extract::Request, next: axum::middleware::Next) -> Response {
+    use axum::http::{HeaderValue, Method, header};
+    let origin = req.headers().get(header::ORIGIN).and_then(|o| o.to_str().ok()).map(str::to_string);
+    let same = origin.as_deref().is_none_or(|o| o == format!("http://127.0.0.1:{PORT}") || o == format!("http://localhost:{PORT}"));
+    let app = origin.as_deref().is_some_and(|o| APP_ORIGINS.contains(&o));
+    if !same && !app {
+        return (StatusCode::FORBIDDEN, "origin not allowed").into_response();
+    }
+    let preflight = req.method() == Method::OPTIONS;
+    let mut res = if preflight { StatusCode::NO_CONTENT.into_response() } else { next.run(req).await };
+    if let (true, Some(o)) = (app, origin) {
+        let h = res.headers_mut();
+        h.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, HeaderValue::from_str(&o).unwrap());
+        h.insert(header::ACCESS_CONTROL_ALLOW_METHODS, HeaderValue::from_static("GET, POST, DELETE, OPTIONS"));
+        h.insert(header::ACCESS_CONTROL_ALLOW_HEADERS, HeaderValue::from_static("content-type"));
+    }
+    res
+}
+
+#[derive(Deserialize)]
+struct UrlBody {
+    url: String,
+}
+
+/// Open a site or dashboard in the default browser.
+async fn open_url(Json(b): Json<UrlBody>) -> R {
+    if !(b.url.starts_with("http://") || b.url.starts_with("https://")) {
+        return Err(anyhow::anyhow!("only http(s) URLs can be opened").into());
+    }
+    crate::platform::open_url(&b.url)?;
+    ok()
 }
 
 fn status_json(s: Status) -> Value {
@@ -87,13 +129,13 @@ async fn status(State(app): State<Shared>) -> R {
         "home": paths::home(),
         "tld": cfg.tld,
         "caddy": { "installed": caddy::binary().exists(), "status": status_json(app.status_of("caddy")) },
-        "dns": { "port": cfg.dns_port, "resolver": system::resolver_ok(&cfg) },
+        "os": crate::platform::target().0,
+        "dns": { "port": crate::platform::dns_port(&cfg), "resolver": crate::platform::dns_ok(&cfg), "low_ports": crate::platform::low_ports_ok() },
         "ca_trusted": system::ca_trusted(),
         "php": php,
         "default_php": cfg.php,
         "composer": system::composer_phar().exists(),
-        "on_path": std::env::var("PATH").unwrap_or_default().contains(&paths::bin().display().to_string())
-            || std::fs::read_to_string(paths::user_home().join(".zshrc")).unwrap_or_default().contains("# Pack"),
+        "on_path": crate::platform::on_path(&paths::bin()),
         "downloads": download::progress(),
         "jobs": app.jobs.lock().unwrap().values().cloned().collect::<Vec<_>>(),
     })))
@@ -169,6 +211,9 @@ async fn link(State(app): State<Shared>, Json(b): Json<PathBody>) -> R {
     })?;
     app.reconcile().await?;
     let site = sites::find(&app.config(), &name);
+    if let Some(site) = &site {
+        sites::sync_app_url(site);
+    }
     Ok(Json(json!({ "ok": true, "site": site })))
 }
 
@@ -178,6 +223,7 @@ async fn unlink(State(app): State<Shared>, Json(b): Json<NameBody>) -> R {
         c.links.remove(&name);
         c.proxies.remove(&name);
         c.secured.retain(|s| s != &name);
+        c.insecure.retain(|s| s != &name);
         c.isolated.remove(&name);
     })?;
     app.reconcile().await?;
@@ -195,13 +241,11 @@ async fn secure(State(app): State<Shared>, Json(b): Json<SecureBody>) -> R {
     if sites::find(&cfg, &b.name).is_none() {
         return Err(anyhow::anyhow!("no site named {}", b.name).into());
     }
-    app.update(|c| {
-        c.secured.retain(|s| s != &b.name);
-        if b.secure {
-            c.secured.push(b.name.clone());
-        }
-    })?;
+    app.update(|c| c.set_secured(&b.name, b.secure))?;
     app.reconcile().await?;
+    if let Some(site) = sites::find(&app.config(), &b.name) {
+        sites::sync_app_url(&site);
+    }
     ok()
 }
 
@@ -345,7 +389,7 @@ async fn php_uninstall(State(app): State<Shared>, Json(b): Json<VersionBody>) ->
     if cfg.php_versions_in_use().contains(&b.version) {
         return Err(anyhow::anyhow!("PHP {} is in use (default or isolated site)", b.version).into());
     }
-    app.sup.stop(&format!("php-{}", b.version)).await;
+    app.stop_php(&b.version).await;
     packages::uninstall("php", &b.version)?;
     let _ = std::fs::remove_dir_all(paths::php_dir(&b.version));
     let _ = std::fs::remove_file(paths::bin().join(format!("php{}", b.version.replace('.', ""))));
@@ -586,6 +630,7 @@ async fn settings(State(app): State<Shared>) -> R {
 struct SettingsBody {
     dumps: Option<bool>,
     lan_access: Option<bool>,
+    https: Option<bool>,
     auto_update: Option<bool>,
     manifest_url: Option<String>,
     php_ini: Option<crate::config::PhpIni>,
@@ -593,12 +638,18 @@ struct SettingsBody {
 
 async fn settings_update(State(app): State<Shared>, Json(b): Json<SettingsBody>) -> R {
     let restart_php = b.php_ini.is_some() || b.dumps.is_some();
+    let https_changed = b.https.is_some();
     app.update(|c| {
         if let Some(v) = b.dumps {
             c.dumps = v;
         }
         if let Some(v) = b.lan_access {
             c.lan_access = v;
+        }
+        if let Some(v) = b.https {
+            c.https = v;
+            c.insecure.clear();
+            c.secured.clear();
         }
         if let Some(v) = b.auto_update {
             c.auto_update = v;
@@ -611,6 +662,11 @@ async fn settings_update(State(app): State<Shared>, Json(b): Json<SettingsBody>)
         }
     })?;
     app.reconcile().await?;
+    if https_changed {
+        for site in sites::all(&app.config()) {
+            sites::sync_app_url(&site);
+        }
+    }
     if restart_php {
         restart_php_pools(&app).await;
     }
@@ -619,7 +675,7 @@ async fn settings_update(State(app): State<Shared>, Json(b): Json<SettingsBody>)
 
 async fn restart_php_pools(app: &Shared) {
     for v in app.config().php_versions_in_use() {
-        app.sup.stop(&format!("php-{v}")).await;
+        app.stop_php(&v).await;
     }
     let _ = app.reconcile().await;
 }
@@ -643,11 +699,7 @@ async fn setup(State(app): State<Shared>, body: Option<Json<SetupBody>>) -> R {
     let minimal = body.map(|b| b.0.minimal).unwrap_or_default();
     let notes = app.bootstrap(minimal).await?;
     let cfg = app.config();
-    let ca = system::ensure_ca().await.ok();
-    if !system::resolver_ok(&cfg) || (ca.is_some() && !system::ca_trusted()) {
-        let ca = ca.filter(|_| !system::ca_trusted());
-        system::run_privileged_gui(&system::privileged_script(&cfg, ca.as_deref())).await?;
-    }
+    system::configure_system(&cfg, true).await?;
     system::add_to_path()?;
     Ok(Json(json!({ "ok": true, "notes": notes })))
 }
@@ -668,4 +720,13 @@ async fn bootstrap(State(app): State<Shared>, body: Option<Json<SetupBody>>) -> 
 
 fn tracing_note(note: &str) {
     crate::app::tracing_log(note);
+}
+
+/// Stop everything and exit (used by `pack uninstall` and self-update).
+async fn shutdown(State(app): State<Shared>) -> R {
+    tokio::spawn(async move {
+        app.sup.stop_all().await;
+        std::process::exit(0);
+    });
+    ok()
 }

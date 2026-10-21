@@ -125,19 +125,20 @@ impl App {
         // PHP-FPM pools for every installed version that a site (or the default) uses.
         let wanted = cfg.php_versions_in_use();
         for p in php::installed() {
-            let name = format!("php-{}", p.version);
             if wanted.contains(&p.version) {
                 php::write_config(&p.version, &cfg)?;
-                self.sup.ensure(php::fpm_spec(&p.version)).await;
-                // Don't hand Caddy a socket that isn't there yet (avoids a 502 right after isolate).
+                for spec in php::pool_specs(&p.version, &cfg) {
+                    self.sup.ensure(spec).await;
+                }
+                // Don't hand Caddy a pool that isn't listening yet (avoids a 502 right after isolate).
                 for _ in 0..30 {
-                    if paths::php_socket(&p.version).exists() {
+                    if php::pool_ready(&p.version) {
                         break;
                     }
                     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                 }
-            } else if self.sup.is_running(&name) {
-                self.sup.stop(&name).await;
+            } else {
+                self.stop_php(&p.version).await;
             }
         }
 
@@ -270,11 +271,18 @@ impl App {
         Ok(done)
     }
 
+    /// Stop every FastCGI process of a PHP version.
+    pub async fn stop_php(&self, version: &str) {
+        for name in self.sup.names_with_prefix(&format!("php-{version}")) {
+            self.sup.stop(&name).await;
+        }
+    }
+
     /// Restart the processes running a package's binaries.
     pub async fn restart_users_of(self: &Shared, name: &str, series: &str) {
         let cfg = self.config();
         match name {
-            "php" => self.sup.stop(&format!("php-{series}")).await,
+            "php" => self.stop_php(series).await,
             "caddy" => self.sup.stop("caddy").await,
             _ => {
                 for inst in cfg.services.iter().filter(|s| s.kind == name && s.version == series) {

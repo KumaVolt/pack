@@ -1,10 +1,12 @@
-# Releases Pack itself when a v* tag is pushed: the `pack` CLI/daemon for
-# both Mac architectures (used by `pack self-update`) and the desktop app.
+# Releases Pack itself when a v* tag is pushed: the desktop app for every OS
+# (with the `pack` CLI/daemon inside) and the bare `pack` binary that
+# `pack self-update` downloads.
 name: Release
 
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -12,34 +14,58 @@ permissions:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
-          - runner: macos-15
-            arch: arm64
-          - runner: macos-15-intel
-            arch: x86_64
+          - { runner: macos-15,         triple: aarch64-apple-darwin,      target: macos-arm64,    bundles: "app,dmg" }
+          - { runner: macos-15-intel,   triple: x86_64-apple-darwin,       target: macos-x86_64,   bundles: "app,dmg" }
+          - { runner: ubuntu-22.04,     triple: x86_64-unknown-linux-gnu,  target: linux-x86_64,   bundles: "deb,appimage" }
+          - { runner: ubuntu-22.04-arm, triple: aarch64-unknown-linux-gnu, target: linux-arm64,    bundles: "deb,appimage" }
+          - { runner: windows-latest,   triple: x86_64-pc-windows-msvc,    target: windows-x86_64, bundles: "nsis,msi" }
     runs-on: ${{ matrix.runner }}
+    name: ${{ matrix.target }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Build
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: tauri-cli
+      - name: Linux build dependencies
+        if: runner.os == 'Linux'
         run: |
-          cargo build --release -p pack -p pack-app
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+      - name: Build app
+        run: scripts/build-app.sh --target "${{ matrix.triple }}" --bundles "${{ matrix.bundles }}"
+      - name: Collect
+        run: |
           version="${GITHUB_REF_NAME#v}"
+          [ "$GITHUB_REF_TYPE" = tag ] || version="0.0.0-dev"
+          ext=""; [ "${{ runner.os }}" = Windows ] && ext=".exe"
+          rel="target/${{ matrix.triple }}/release"
           mkdir -p out
-          tar -C target/release -czf "out/pack-$version-macos-${{ matrix.arch }}.tar.gz" pack
-          (cd out && shasum -a 256 "pack-$version-macos-${{ matrix.arch }}.tar.gz" > "pack-$version-macos-${{ matrix.arch }}.tar.gz.sha256")
-      - name: App bundle
-        run: |
-          cargo install tauri-cli --version "^2" --locked
-          (cd app && cargo tauri build --bundles app)
-          # The app starts the daemon from the binary next to its own executable.
-          cp target/release/pack target/release/bundle/macos/Pack.app/Contents/MacOS/pack
-          version="${GITHUB_REF_NAME#v}"
-          ditto -c -k --keepParent target/release/bundle/macos/Pack.app "out/Pack-$version-macos-${{ matrix.arch }}.zip"
+          asset="pack-$version-${{ matrix.target }}.tar.gz"
+          tar -C "$rel" -czf "out/$asset" "pack$ext"
+          (cd out && (sha256sum "$asset" 2>/dev/null || shasum -a 256 "$asset") > "$asset.sha256")
+          b="$rel/bundle"
+          case "${{ runner.os }}" in
+            macOS)   cp "$b"/dmg/*.dmg out/ ;;
+            Linux)   cp "$b"/deb/*.deb "$b"/appimage/*.AppImage out/ ;;
+            Windows) cp "$b"/nsis/*.exe "$b"/msi/*.msi out/ ;;
+          esac
+          ls -la out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pack-${{ matrix.target }}
+          path: out/*
       - name: Publish
+        if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --title "Pack $GITHUB_REF_NAME" --generate-notes || sleep 5
-          gh release upload "$GITHUB_REF_NAME" out/* --clobber
+          for i in 1 2 3; do gh release upload "$GITHUB_REF_NAME" out/* --clobber && break; sleep 10; done

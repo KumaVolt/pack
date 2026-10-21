@@ -92,7 +92,7 @@ pub fn for_dir(cfg: &Config, dir: &Path) -> Option<Site> {
 
 fn build(cfg: &Config, name: &str, path: PathBuf, kind: SiteKind) -> Site {
     let host = format!("{name}.{}", cfg.tld);
-    let secured = cfg.secured.iter().any(|s| s == name);
+    let secured = cfg.is_secured(name);
     let isolated = cfg.isolated.get(name);
     let scheme = if secured { "https" } else { "http" };
     let port = if secured { cfg.https_port } else { cfg.http_port };
@@ -144,6 +144,38 @@ fn detect(path: &Path) -> (PathBuf, String) {
     }
     let php = has("index.php");
     (path.to_path_buf(), if php { "PHP" } else { "Static" }.into())
+}
+
+/// Point a Laravel app's APP_URL at the site's URL, if it still has the
+/// default (`http://localhost`) or an old URL of this same site.
+pub fn sync_app_url(site: &Site) {
+    if site.framework != "Laravel" && site.framework != "Statamic" {
+        return;
+    }
+    let env = site.path.join(".env");
+    let Ok(text) = std::fs::read_to_string(&env) else { return };
+    let mut changed = false;
+    let lines: Vec<String> = text
+        .lines()
+        .map(|line| {
+            let Some(value) = line.strip_prefix("APP_URL=") else { return line.to_string() };
+            let current = value.trim().trim_matches('"');
+            let host = current.split("://").nth(1).unwrap_or("").split(['/', ':']).next().unwrap_or("");
+            if (current == "http://localhost" || host == site.host) && current != site.url {
+                changed = true;
+                format!("APP_URL={}", site.url)
+            } else {
+                line.to_string()
+            }
+        })
+        .collect();
+    if changed {
+        let mut out = lines.join("\n");
+        if text.ends_with('\n') {
+            out.push('\n');
+        }
+        let _ = std::fs::write(env, out);
+    }
 }
 
 impl Site {

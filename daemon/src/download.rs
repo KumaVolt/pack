@@ -97,23 +97,44 @@ pub async fn fetch(url: &str, label: &str) -> anyhow::Result<PathBuf> {
     Ok(dest)
 }
 
-/// Unpack an archive with the system `tar` (handles .tar.gz, .tgz, .tar.xz, .zip).
-pub async fn extract(archive: &Path, into: &Path, strip_components: u32) -> anyhow::Result<()> {
-    std::fs::create_dir_all(into)?;
-    let mut cmd = tokio::process::Command::new("/usr/bin/tar");
-    cmd.arg("-xf").arg(archive).arg("-C").arg(into);
-    if strip_components > 0 {
-        cmd.arg(format!("--strip-components={strip_components}"));
-    }
-    let out = cmd.output().await?;
-    if !out.status.success() {
-        bail!("tar failed for {}: {}", archive.display(), String::from_utf8_lossy(&out.stderr));
-    }
-    Ok(())
+/// Unpack a .tar.gz (every Pack package is one), optionally dropping leading
+/// path components. Pure Rust, so it behaves the same on every OS.
+pub async fn extract(archive: &Path, into: &Path, strip_components: usize) -> anyhow::Result<()> {
+    let archive = archive.to_path_buf();
+    let into = into.to_path_buf();
+    tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
+        std::fs::create_dir_all(&into)?;
+        let file = std::fs::File::open(&archive).with_context(|| format!("opening {}", archive.display()))?;
+        let mut tar = tar::Archive::new(flate2::read::GzDecoder::new(std::io::BufReader::new(file)));
+        tar.set_preserve_permissions(true);
+        for entry in tar.entries()? {
+            let mut entry = entry?;
+            let path = entry.path()?.into_owned();
+            let rel: std::path::PathBuf = path.components().skip(strip_components).collect();
+            if rel.as_os_str().is_empty() {
+                continue;
+            }
+            if rel.components().any(|c| matches!(c, std::path::Component::ParentDir | std::path::Component::RootDir | std::path::Component::Prefix(_))) {
+                bail!("unsafe path in {}: {}", archive.display(), path.display());
+            }
+            let dest = into.join(&rel);
+            if let Some(parent) = dest.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            entry.unpack(&dest).with_context(|| format!("unpacking {}", rel.display()))?;
+        }
+        Ok(())
+    })
+    .await?
 }
 
 pub fn make_executable(path: &Path) -> std::io::Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))?;
+    }
+    let _ = path;
+    Ok(())
 }
 

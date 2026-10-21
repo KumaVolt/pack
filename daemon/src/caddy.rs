@@ -3,6 +3,7 @@
 
 use crate::config::Config;
 use crate::packages;
+use crate::{php, platform};
 use crate::paths;
 use crate::sites::{self, Site};
 use crate::supervisor::Spec;
@@ -13,7 +14,7 @@ use std::path::PathBuf;
 pub const ADMIN: &str = "127.0.0.1:20190";
 
 pub fn binary() -> PathBuf {
-    packages::current("caddy", "2").join("caddy")
+    packages::current("caddy", "2").join(platform::exe("caddy"))
 }
 
 pub async fn install() -> anyhow::Result<()> {
@@ -72,7 +73,7 @@ pub fn render(cfg: &Config) -> String {
          \tlog {{\n\t\toutput file {}\n\t\tlevel WARN\n\t}}\n}}\n",
         cfg.http_port,
         cfg.https_port,
-        q(paths::logs().join("caddy-errors.log").display())
+        q(platform::slash(&paths::logs().join("caddy-errors.log")))
     );
     // Caddy has to listen on all interfaces (macOS only lets non-root processes
     // bind low ports on the wildcard address), so refuse non-local clients.
@@ -103,11 +104,11 @@ fn body(cfg: &Config, site: &Site) -> String {
         let _ = writeln!(b, "\treverse_proxy {}", q(upstream));
         return b;
     }
-    let _ = writeln!(b, "\troot * {}", q(site.docroot.display()));
+    let _ = writeln!(b, "\troot * {}", q(platform::slash(&site.docroot)));
     let _ = writeln!(b, "\tencode zstd gzip");
     if site.serves_php() {
-        let sock = paths::php_socket(&site.php);
-        let _ = writeln!(b, "\tphp_fastcgi {} {{", q(format!("unix/{}", sock.display())));
+        let upstreams: Vec<String> = php::upstreams(&site.php).into_iter().map(q).collect();
+        let _ = writeln!(b, "\tphp_fastcgi {} {{", upstreams.join(" "));
         let _ = writeln!(b, "\t\tenv PACK_SITE {}", site.name);
         let _ = writeln!(b, "\t}}");
     }

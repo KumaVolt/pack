@@ -110,6 +110,11 @@ impl Supervisor {
         self.procs.lock().unwrap().remove(name);
     }
 
+    /// Names of all processes starting with `prefix`.
+    pub fn names_with_prefix(&self, prefix: &str) -> Vec<String> {
+        self.procs.lock().unwrap().keys().filter(|k| k.starts_with(prefix)).cloned().collect()
+    }
+
     pub async fn stop_all(&self) {
         let names: Vec<String> = self.procs.lock().unwrap().keys().cloned().collect();
         let tasks = names.into_iter().map(|n| {
@@ -142,6 +147,7 @@ async fn run(procs: Arc<Mutex<HashMap<String, Entry>>>, spec: Spec, mut stop_rx:
         };
         let mut cmd = tokio::process::Command::new(&spec.program);
         cmd.args(&spec.args).envs(&spec.env).stdin(Stdio::null()).stdout(out).stderr(err);
+        crate::platform::no_window_tokio(&mut cmd);
         if let Some(cwd) = &spec.cwd {
             cmd.current_dir(cwd);
         }
@@ -158,10 +164,9 @@ async fn run(procs: Arc<Mutex<HashMap<String, Entry>>>, spec: Spec, mut stop_rx:
 
         tokio::select! {
             _ = &mut stop_rx => {
-                if let Some(pid) = pid {
-                    unsafe { libc::kill(pid as i32, libc::SIGTERM) };
-                }
-                if tokio::time::timeout(Duration::from_secs(12), child.wait()).await.is_err() {
+                let graceful = pid.is_some_and(crate::platform::terminate);
+                let grace = if graceful { Duration::from_secs(12) } else { Duration::ZERO };
+                if tokio::time::timeout(grace, child.wait()).await.is_err() || !graceful {
                     let _ = child.kill().await;
                 }
                 set(&procs, &spec.name, Status::Stopped, None);
