@@ -27,6 +27,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -142,8 +143,20 @@ def php_build(series, version, arch, root):
         spc.chmod(0o755)
     env = dict(os.environ, MACOSX_DEPLOYMENT_TARGET="13.0")
     run([spc, "doctor", "--auto-fix"], cwd=work, env=env)
-    # Always fetch php-src for this exact version (spc caches by name, not version).
-    run([spc, "download", f"--for-extensions={PHP_EXTENSIONS}", f"--with-php={version}", "--prefer-pre-built", "--ignore-cache-sources=php-src"], cwd=work, env=env)
+    # Always fetch php-src for this exact version (spc caches by name, not
+    # version). Source mirrors (ftp.gnu.org, dl.static-php.dev) are flaky, so
+    # retry, and drop the prebuilt-library shortcut on the last attempt.
+    for attempt in range(3):
+        cmd = [spc, "download", f"--for-extensions={PHP_EXTENSIONS}", f"--with-php={version}", "--ignore-cache-sources=php-src", "--retry=3"]
+        if attempt < 2:
+            cmd.append("--prefer-pre-built")
+        try:
+            run(cmd, cwd=work, env=env)
+            break
+        except subprocess.CalledProcessError:
+            if attempt == 2:
+                raise
+            time.sleep(30)
     shutil.rmtree(work / "buildroot", ignore_errors=True)
     shutil.rmtree(work / "source/php-src", ignore_errors=True)
     # spc's post-build sanity check trips over the prebuilt SQLite's compile
@@ -272,7 +285,8 @@ def major(version):
 
 
 PACKAGES = {
-    "php": dict(series=["8.5", "8.4", "8.3", "8.2", "8.1"], latest=php_latest, build=php_build, native=True),
+    # 8.1 is end-of-life and no longer compiles with current Xcode.
+    "php": dict(series=["8.5", "8.4", "8.3", "8.2"], latest=php_latest, build=php_build, native=True),
     "mysql": dict(series=["8.4", "9.7"], latest=mysql_latest, build=mysql_build),
     "postgres": dict(series=["18", "17", "16", "15", "14"], latest=postgres_latest, build=postgres_build),
     "redis": dict(series=["9", "8"], latest=valkey_latest, build=valkey_build, native=True),
