@@ -17,6 +17,7 @@ Stdlib only.
 
 import argparse
 import datetime as dt
+import functools
 import hashlib
 import json
 import os
@@ -50,6 +51,7 @@ def get(url, method="GET"):
     return urllib.request.urlopen(req, timeout=60)
 
 
+@functools.lru_cache(maxsize=None)
 def text(url):
     with get(url) as r:
         return r.read().decode()
@@ -68,6 +70,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
+@functools.lru_cache(maxsize=None)
 def latest_tag(repo):
     opener = urllib.request.build_opener(NoRedirect)
     try:
@@ -79,6 +82,7 @@ def latest_tag(repo):
     raise SystemExit(f"no latest release for {repo}")
 
 
+@functools.lru_cache(maxsize=None)
 def git_tags(repo):
     body = text(f"https://github.com/{repo}.git/info/refs?service=git-upload-pack")
     return sorted(set(re.findall(r"refs/tags/([^\s^\x00{}]+)", body)))
@@ -93,9 +97,8 @@ def newest(versions):
 
 
 def download(url, dest):
-    print(f"  ↓ {url}", file=sys.stderr)
-    with get(url) as r, open(dest, "wb") as f:
-        shutil.copyfileobj(r, f)
+    # curl copes with cookie-based redirect chains that urllib loops on.
+    run(["curl", "-fsSL", "--retry", "3", "-A", UA["User-Agent"], "-o", str(dest), url])
     return dest
 
 
@@ -118,7 +121,7 @@ def untar(archive, into, strip=0):
 # -> version, arches, runner ("native" = must be built on that arch's macOS
 # runner, else ubuntu repacks), and build(series, version, arch, root).
 
-def php_latest(series):
+def php_latest(series, arch="arm64"):
     data = json.loads(text(f"https://www.php.net/releases/?json&version={series}"))
     return data["version"]
 
@@ -129,7 +132,9 @@ def php_build(series, version, arch, root):
     spc = work / "spc"
     if not spc.exists():
         cpu = "aarch64" if arch == "arm64" else "x86_64"
-        download(f"https://dl.static-php.dev/static-php-cli/spc-bin/nightly/spc-macos-{cpu}", spc)
+        tag = latest_tag("crazywhalecc/static-php-cli")
+        archive = download(f"https://github.com/crazywhalecc/static-php-cli/releases/download/{tag}/spc-macos-{cpu}.tar.gz", work / "spc.tar.gz")
+        untar(archive, work)
         spc.chmod(0o755)
     env = dict(os.environ, MACOSX_DEPLOYMENT_TARGET="13.0")
     run([spc, "doctor", "--auto-fix"], cwd=work, env=env)
@@ -168,9 +173,10 @@ def newest_published(tags, url_fn):
     return None
 
 
-def mysql_latest(series):
+def mysql_latest(series, arch="arm64"):
+    # Oracle doesn't publish every patch for Intel, so resolve per architecture.
     tags = [t[len("mysql-"):] for t in git_tags("mysql/mysql-server") if t.startswith(f"mysql-{series}.")]
-    return newest_published(tags, lambda v: mysql_url(series, v, "arm64"))
+    return newest_published(tags, lambda v: mysql_url(series, v, arch))
 
 
 def mysql_build(series, version, arch, root):
@@ -182,7 +188,7 @@ def mysql_build(series, version, arch, root):
         shutil.rmtree(p, ignore_errors=True) if p.is_dir() else p.unlink(missing_ok=True)
 
 
-def postgres_latest(series):
+def postgres_latest(series, arch="arm64"):
     tags = [t for t in git_tags("theseus-rs/postgresql-binaries") if t.split(".")[0] == series and re.fullmatch(r"[\d.]+", t)]
     return newest(tags)
 
@@ -195,7 +201,7 @@ def postgres_build(series, version, arch, root):
     shutil.rmtree(root / "include", ignore_errors=True)
 
 
-def valkey_latest(series):
+def valkey_latest(series, arch="arm64"):
     return newest([t for t in git_tags("valkey-io/valkey") if re.fullmatch(rf"{series}\.\d+\.\d+", t)])
 
 
@@ -210,7 +216,7 @@ def valkey_build(series, version, arch, root):
 
 
 def gh_latest(repo):
-    return lambda series: latest_tag(repo).lstrip("v")
+    return lambda series, arch="arm64": latest_tag(repo).lstrip("v")
 
 
 def single_binary(url_fn, name):
@@ -234,9 +240,9 @@ def goarch(arch):
     return "arm64" if arch == "arm64" else "amd64"
 
 
-def mongodb_latest(series):
+def mongodb_latest(series, arch="arm64"):
     tags = [t[1:] for t in git_tags("mongodb/mongo") if re.fullmatch(rf"r{re.escape(series)}\.\d+", t)]
-    return newest_published(tags, lambda v: mongodb_url(v, "arm64"))
+    return newest_published(tags, lambda v: mongodb_url(v, arch))
 
 
 def mongodb_url(version, arch):
@@ -249,7 +255,7 @@ def mongodb_build(series, version, arch, root):
     untar(download(mongodb_url(version, arch), tmp / "m.tgz"), root, strip=1)
 
 
-def composer_latest(series):
+def composer_latest(series, arch="any"):
     return json.loads(text("https://getcomposer.org/versions"))["stable"][0]["version"]
 
 
@@ -322,14 +328,15 @@ def cmd_plan(args):
         if only and name not in only:
             continue
         for series in series_of(name):
-            try:
-                version = pkg["latest"](series)
-            except SystemExit as e:
-                print(f"skip {name} {series}: {e}", file=sys.stderr)
-                continue
-            if not version:
-                continue
             for arch in arches_of(name):
+                try:
+                    version = pkg["latest"](series, arch)
+                except SystemExit as e:
+                    print(f"skip {name} {series} {arch}: {e}", file=sys.stderr)
+                    continue
+                if not version:
+                    print(f"skip {name} {series} {arch}: not published", file=sys.stderr)
+                    continue
                 if (name, version, arch) in have and not args.force:
                     continue
                 runner = NATIVE_RUNNER[arch] if pkg.get("native") else "ubuntu-latest"
@@ -340,7 +347,7 @@ def cmd_plan(args):
 
 def cmd_build(args):
     pkg = PACKAGES[args.name]
-    version = args.version or pkg["latest"](args.series)
+    version = args.version or pkg["latest"](args.series, args.arch)
     if pkg.get("native") and args.arch != "any":
         host = "arm64" if platform.machine() == "arm64" else "x86_64"
         if host != args.arch or sys.platform != "darwin":
