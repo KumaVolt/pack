@@ -23,7 +23,11 @@ pub struct Config {
     pub paths: Vec<PathBuf>,
     /// Explicitly linked sites: name -> project directory.
     pub links: BTreeMap<String, PathBuf>,
-    /// Sites served over HTTPS (http redirects to https).
+    /// Serve every site over HTTPS (http redirects to https), except `insecure`.
+    pub https: bool,
+    /// Sites kept on plain HTTP while `https` is on.
+    pub insecure: Vec<String>,
+    /// Sites served over HTTPS while `https` is off.
     pub secured: Vec<String>,
     /// Per-site PHP version.
     pub isolated: BTreeMap<String, String>,
@@ -88,6 +92,8 @@ impl Default for Config {
             auto_update: false,
             paths: vec![sites],
             links: BTreeMap::new(),
+            https: true,
+            insecure: vec![],
             secured: vec![],
             isolated: BTreeMap::new(),
             proxies: BTreeMap::new(),
@@ -113,6 +119,24 @@ impl Config {
         std::fs::write(&tmp, serde_json::to_vec_pretty(self)?)?;
         std::fs::rename(tmp, file)?;
         Ok(())
+    }
+
+    pub fn is_secured(&self, site: &str) -> bool {
+        if self.https {
+            !self.insecure.iter().any(|s| s == site)
+        } else {
+            self.secured.iter().any(|s| s == site)
+        }
+    }
+
+    pub fn set_secured(&mut self, site: &str, on: bool) {
+        self.insecure.retain(|s| s != site);
+        self.secured.retain(|s| s != site);
+        match (self.https, on) {
+            (true, false) => self.insecure.push(site.to_string()),
+            (false, true) => self.secured.push(site.to_string()),
+            _ => {}
+        }
     }
 
     /// PHP versions referenced anywhere in the config (default + isolations).

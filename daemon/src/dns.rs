@@ -1,5 +1,5 @@
 //! A tiny DNS server: every `*.<tld>` name resolves to 127.0.0.1.
-//! macOS sends `.test` lookups here via `/etc/resolver/test` (see `pack install`).
+//! The OS sends `.test` lookups here (see `platform::privileged_script`).
 
 use std::net::Ipv4Addr;
 use tokio::net::UdpSocket;

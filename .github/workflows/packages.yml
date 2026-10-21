@@ -15,6 +15,10 @@ on:
         description: "Comma-separated packages to check (empty = all): php,mysql,postgres,redis,meilisearch,typesense,mail,s3,mongodb,caddy,cloudflared,composer"
         required: false
         default: ""
+      targets:
+        description: "Comma-separated targets (empty = all): macos-arm64,macos-x86_64,linux-x86_64,linux-arm64,windows-x86_64"
+        required: false
+        default: ""
       force:
         description: "Rebuild even if the version is already published"
         type: boolean
@@ -38,10 +42,12 @@ jobs:
       - id: plan
         env:
           ONLY: ${{ inputs.only }}
+          TARGETS: ${{ inputs.targets }}
           FORCE: ${{ inputs.force }}
         run: |
           args=()
           [ -n "$ONLY" ] && args+=(--only "$ONLY")
+          [ -n "$TARGETS" ] && args+=(--targets "$TARGETS")
           [ "$FORCE" = "true" ] && args+=(--force)
           matrix=$(python3 scripts/packages.py plan --manifest dist/manifest.json "${args[@]}")
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
@@ -55,14 +61,20 @@ jobs:
       max-parallel: 12
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     runs-on: ${{ matrix.runner }}
-    name: ${{ matrix.name }} ${{ matrix.version }} (${{ matrix.arch }})
+    name: ${{ matrix.name }} ${{ matrix.version }} (${{ matrix.target }})
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - name: Build
         env:
           # static-php-cli resolves some sources through the GitHub API.
           GITHUB_TOKEN: ${{ github.token }}
-        run: python3 scripts/packages.py build "${{ matrix.name }}" "${{ matrix.series }}" "${{ matrix.arch }}" --version "${{ matrix.version }}" --out out
+        run: python scripts/packages.py build "${{ matrix.name }}" "${{ matrix.series }}" "${{ matrix.target }}" --version "${{ matrix.version }}" --out out
       - name: Publish release asset
         env:
           GH_TOKEN: ${{ github.token }}
@@ -76,7 +88,7 @@ jobs:
           for i in 1 2 3; do gh release upload "$tag" out/*.tar.gz --clobber && break; sleep 10; done
       - uses: actions/upload-artifact@v4
         with:
-          name: meta-${{ matrix.name }}-${{ matrix.version }}-${{ matrix.arch }}
+          name: meta-${{ matrix.name }}-${{ matrix.version }}-${{ matrix.target }}
           path: out/*.json
 
   manifest:
@@ -96,8 +108,8 @@ jobs:
             --base-url "https://github.com/${{ github.repository }}/releases/download"
       - name: Commit
         run: |
-          git config user.name "pack-bot"
-          git config user.email "pack-bot@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add dist/manifest.json
           git diff --cached --quiet && exit 0
           git commit -m "packages: update manifest"

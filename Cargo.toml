@@ -6,4 +6,4 @@ members = ["daemon", "app"]
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
-repository = "https://github.com/miquel/pack"
+repository = "https://github.com/KumaVolt/pack"

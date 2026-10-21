@@ -1,6 +1,6 @@
 [package]
 name = "pack"
-description = "Free, open-source local PHP development environment (a Laravel Herd alternative)"
+description = "Free, open-source local PHP development environment"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -13,9 +13,15 @@ path = "src/main.rs"
 anyhow = "1"
 axum = "0.8"
 clap = { version = "4", features = ["derive"] }
-libc = "0.2"
+
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
+flate2 = "1"
+tar = "0.4"
+base64 = "0.22"
 tokio = { version = "1", features = ["full"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

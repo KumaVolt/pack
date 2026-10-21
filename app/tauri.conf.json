@@ -2,13 +2,50 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Pack",
   "identifier": "dev.pack.app",
-  "build": { "frontendDist": "dist" },
+  "build": {
+    "frontendDist": "../daemon/ui"
+  },
   "app": {
     "windows": [],
-    "security": { "csp": null }
+    "macOSPrivateApi": true,
+    "security": {
+      "csp": null
+    }
   },
   "bundle": {
     "active": true,
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/icon.png"]
+    "targets": [
+      "app",
+      "dmg",
+      "nsis",
+      "msi",
+      "deb",
+      "appimage"
+    ],
+    "category": "DeveloperTool",
+    "shortDescription": "Local PHP development environment",
+    "longDescription": "Sites with HTTPS, PHP versions, MySQL, PostgreSQL, Redis, mail and more \u2014 free and open source.",
+    "externalBin": [
+      "binaries/pack"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "macOS": {
+      "minimumSystemVersion": "13.0",
+      "signingIdentity": "-"
+    },
+    "linux": {
+      "deb": {
+        "depends": [
+          "libwebkit2gtk-4.1-0",
+          "libayatana-appindicator3-1"
+        ]
+      }
+    }
   }
 }

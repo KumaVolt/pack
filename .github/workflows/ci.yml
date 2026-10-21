@@ -1,0 +1,30 @@
+# Builds pack on every OS and runs scripts/smoke.sh: installs the web server,
+# PHP, MySQL and Redis from the manifest and serves a real site over HTTPS.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel, ubuntu-22.04, ubuntu-22.04-arm, windows-latest]
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Test
+        run: cargo test -p pack
+      - name: Build
+        run: cargo build --release -p pack
+      - name: Smoke test
+        run: scripts/smoke.sh target/release/pack

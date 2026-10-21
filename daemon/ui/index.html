@@ -77,11 +77,28 @@ iframe.mail { width: 100%; height: calc(100vh - 140px); border: 1px solid var(--
 .kind { cursor: pointer; }
 .kind:hover { border-color: var(--accent); }
 label.check { display: flex; gap: 8px; align-items: center; }
+/* Desktop app chrome: native window, translucent sidebar, traffic lights over the sidebar on macOS. */
+html.app, html.app body { background: transparent; }
+html.app body { -webkit-user-select: none; user-select: none; cursor: default; }
+html.app main { background: var(--bg); }
+html.app nav { background: transparent; border-right-color: color-mix(in srgb, var(--line) 70%, transparent); }
+html.mac nav { padding-top: 46px; }
+html.linux nav { background: var(--side); }
+html.app input, html.app textarea, html.app .mono, html.app pre, html.app .dump .body { -webkit-user-select: text; user-select: text; }
+.drag { position: fixed; top: 0; left: 0; right: 0; height: 28px; z-index: 5; }
+html:not(.mac) .drag { display: none; }
+.switch { position: relative; width: 34px; height: 20px; border-radius: 10px; background: var(--line); border: 0; padding: 0; cursor: pointer; transition: background .15s; flex: none; }
+.switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgb(0 0 0 / .25); transition: transform .15s; }
+.switch.on { background: var(--ok); }
+.switch.on::after { transform: translateX(14px); }
+.spinner { width: 22px; height: 22px; border: 3px solid var(--line); border-top-color: var(--accent); border-radius: 50%; margin: 0 auto 12px; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 </style>
 </head>
 <body>
-<nav>
-  <div class="brand"><div class="logo">▲</div><div>Pack<small>free local PHP dev</small></div></div>
+<div class="drag" data-tauri-drag-region></div>
+<nav data-tauri-drag-region>
+  <div class="brand"><div class="logo"><svg viewBox="0 0 24 24" width="16" height="16" fill="#fff"><path d="M12 2.5 21 7 12 11.5 3 7z"/><path d="M3 7l9 4.5V22L3 17.5z" opacity=".85"/><path d="M21 7l-9 4.5V22l9-4.5z" opacity=".65"/></svg></div><div>Pack<small>free local PHP dev</small></div></div>
   <a data-page="overview">⌂ Overview</a>
   <a data-page="sites">◎ Sites</a>
   <a data-page="php">⟨⟩ PHP</a>
@@ -97,12 +114,16 @@ label.check { display: flex; gap: 8px; align-items: center; }
 <div id="toast" class="toast" hidden></div>
 <script>
 const $ = (s, el = document) => el.querySelector(s);
+// Inside the desktop app the page is local (tauri://), so talk to the daemon directly.
+const IN_APP = !location.protocol.startsWith('http') || location.hostname === 'tauri.localhost' || '__TAURI_INTERNALS__' in window;
+const API = IN_APP ? 'http://127.0.0.1:7171' : '';
+if (IN_APP) document.documentElement.classList.add('app', /Mac/.test(navigator.platform) ? 'mac' : /Win/.test(navigator.platform) ? 'win' : 'linux');
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let page = location.hash.slice(1) || 'overview';
 let state = { status: null, sites: null, php: null, services: null, dumps: [], lastDump: 0, seenDumps: 0, logSite: null, logFile: null, sysLog: null };
 
 async function api(path, opts = {}) {
-  const res = await fetch(path, { method: opts.method || 'GET', headers: { 'Content-Type': 'application/json' }, body: opts.body ? JSON.stringify(opts.body) : undefined });
+  const res = await fetch(API + path, { method: opts.method || 'GET', headers: { 'Content-Type': 'application/json' }, body: opts.body ? JSON.stringify(opts.body) : undefined });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || res.statusText);
   return data;
@@ -126,7 +147,7 @@ async function refresh() {
     const loaders = { status: '/api/status', sites: '/api/sites', php: '/api/php', services: '/api/services', packages: '/api/packages' };
     await Promise.all(['status', ...needs].filter((v, i, a) => a.indexOf(v) === i).map(async k => state[k] = await api(loaders[k])));
     $('#foot').textContent = `v${state.status.version} · API :7171`;
-  } catch (e) { $('#main').innerHTML = `<div class="empty">Can't reach the Pack daemon.<br><span class="mono">pack daemon</span></div>`; return; }
+  } catch (e) { $('#main').innerHTML = `<div class="empty"><div class="spinner"></div>Starting Pack…</div>`; setTimeout(refresh, 1000); return; }
   render();
 }
 
@@ -158,16 +179,16 @@ function jobsBar() {
 const pages = {
   overview() {
     const s = state.status, sites = state.sites?.sites || [], svc = state.services?.instances || [];
-    const setupNeeded = !s.caddy.installed || !s.dns.resolver || !s.ca_trusted || !s.php.every(p => p.installed);
+    const setupNeeded = !s.caddy.installed || !s.dns.resolver || !s.dns.low_ports || !s.ca_trusted || !s.php.every(p => p.installed);
     const pk = state.packages, updates = pk ? pk.installed.filter(p => p.update) : [];
-    return `<h1>Overview</h1><p class="sub">Everything Herd Pro does, free and open source.</p>
+    return `<h1>Overview</h1><p class="sub">Your local PHP development environment.</p>
     ${jobsBar()}
-    ${setupNeeded ? `<div class="card banner"><div class="row between"><div><b>Finish setting up Pack</b><div class="muted">Installs the web server, PHP ${esc(s.default_php)}, Composer, MySQL, PostgreSQL, Redis and Mail, then asks once for your password to route <b>.${esc(s.tld)}</b> domains and trust HTTPS.</div></div><button class="primary" onclick="setup(this)">Set up</button></div></div>` : ''}
+    ${setupNeeded ? `<div class="card banner"><div class="row between"><div><b>Finish setting up Pack</b><div class="muted">Installs the web server, PHP ${esc(s.default_php)}, Composer, MySQL, PostgreSQL, Redis and Mail, then asks ${s.os === 'windows' ? 'for permission' : 'once for your password'} to route <b>.${esc(s.tld)}</b> domains and trust HTTPS.</div></div><button class="primary" onclick="setup(this)">Set up</button></div></div>` : ''}
     ${updates.length ? `<div class="card banner ok"><div class="row between"><div><b>${updates.length} update${updates.length > 1 ? 's' : ''} available</b><div class="muted">${updates.map(u => `${esc(u.name)} ${esc(u.version)} → ${esc(u.latest)}`).join(' · ')}</div></div><button class="primary" onclick="act(()=>post('/api/packages/update',{}),'Updating…')">Update all</button></div></div>` : ''}
     <div class="grid">
       <div class="card"><div class="row">${dot(s.caddy.status)}<b>Web server</b></div><div class="muted">Caddy ${s.caddy.installed ? '' : '(not installed)'}</div></div>
       <div class="card"><div class="row"><span class="dot ${s.dns.resolver ? 'running' : 'failed'}"></span><b>.${esc(s.tld)} domains</b></div><div class="muted">${s.dns.resolver ? 'DNS on port ' + s.dns.port : 'resolver not installed'}</div></div>
-      <div class="card"><div class="row"><span class="dot ${s.ca_trusted ? 'running' : 'starting'}"></span><b>HTTPS</b></div><div class="muted">${s.ca_trusted ? 'local CA trusted' : 'local CA not trusted yet'}</div></div>
+      <div class="card"><div class="row"><span class="dot ${s.ca_trusted ? 'running' : 'starting'}"></span><b>HTTPS</b></div><div class="muted">${s.ca_trusted ? 'Certificate trusted — sites are 🔒' : '<a href="#" onclick="setup(this);return false" style="color:var(--accent)">Trust the certificate</a>'}</div></div>
       ${s.php.map(p => `<div class="card"><div class="row">${dot(p.status)}<b>PHP ${esc(p.version)}</b>${p.version === s.default_php ? '<span class="tag accent">default</span>' : ''}</div><div class="muted">${p.installed ? 'FPM pool' : 'not installed'}</div></div>`).join('')}
     </div>
     <div class="card"><div class="row between"><b>Sites</b><a class="btn" onclick="go('sites')">${sites.length} sites →</a></div>
@@ -190,18 +211,19 @@ const pages = {
       <span class="muted">or proxy</span><input id="proxy-name" placeholder="name" style="width:100px"><input id="proxy-up" placeholder="127.0.0.1:3000" style="width:130px">
       <button onclick="act(()=>post('/api/sites/proxy',{name:$('#proxy-name').value,upstream:$('#proxy-up').value}),'Proxy added')">Proxy</button>
     </div></div>
-    <div class="card" style="padding:4px 8px"><table><tr><th>Site</th><th>PHP</th><th>Path</th><th></th></tr>
+    ${httpsHint()}
+    <div class="card" style="padding:4px 8px"><table><tr><th>Site</th><th>HTTPS</th><th>PHP</th><th>Path</th><th></th></tr>
     ${d.sites.map(x => `<tr>
-      <td>${x.secured ? '🔒 ' : ''}<a href="${esc(x.url)}" target="_blank">${esc(x.host)}</a> <span class="tag">${esc(x.framework)}</span>${x.shared ? `<div class="mono"><a href="${esc(x.shared)}" target="_blank">${esc(x.shared)}</a></div>` : ''}</td>
+      <td><a href="${esc(x.url)}" target="_blank">${x.secured ? '🔒 ' : ''}${esc(x.host)}</a> <span class="tag">${esc(x.framework)}</span>${x.shared ? `<div class="mono"><a href="${esc(x.shared)}" target="_blank">${esc(x.shared)}</a></div>` : ''}</td>
+      <td><button class="switch ${x.secured ? 'on' : ''}" title="${x.secured ? 'Served over HTTPS — click for plain HTTP' : 'Click to serve over HTTPS'}" onclick="act(()=>post('/api/sites/secure',{name:'${esc(x.name)}',secure:${!x.secured}}),'${x.secured ? 'HTTP only' : 'HTTPS on'}')"></button></td>
       <td>${x.proxy ? '—' : `<select onchange="act(()=>post('/api/sites/isolate',{name:'${esc(x.name)}',php:this.value||null}),'PHP updated')">
         <option value="">default (${esc(state.status.default_php)})</option>${versions.map(v => `<option ${x.isolated && x.php === v ? 'selected' : ''}>${v}</option>`).join('')}</select>`}</td>
       <td class="mono muted">${esc(x.proxy ? '→ ' + x.proxy : x.path_display)}</td>
       <td><div class="actions">
-        <button onclick="act(()=>post('/api/sites/secure',{name:'${esc(x.name)}',secure:${!x.secured}}),'${x.secured ? 'Unsecured' : 'Secured'}')">${x.secured ? 'Unsecure' : 'Secure'}</button>
         ${x.shared ? `<button onclick="act(()=>post('/api/sites/unshare',{name:'${esc(x.name)}'}),'Stopped sharing')">Stop sharing</button>` : `<button onclick="share('${esc(x.name)}',this)">Share</button>`}
         ${x.kind === 'parked' ? '' : `<button class="danger" onclick="act(()=>post('/api/sites/unlink',{name:'${esc(x.name)}'}),'Removed')">Remove</button>`}
         ${x.proxy ? '' : `<button onclick="state.logSite='${esc(x.name)}';go('logs')">Logs</button>`}
-      </div></td></tr>`).join('') || '<tr><td colspan="4" class="empty">No sites yet.</td></tr>'}
+      </div></td></tr>`).join('') || '<tr><td colspan="5" class="empty">No sites yet.</td></tr>'}
     </table></div>`;
   },
 
@@ -265,12 +287,13 @@ const pages = {
 
   settings() {
     api('/api/settings').then(c => {
-      $('#set-dumps').checked = c.dumps; $('#set-lan').checked = c.lan_access; $('#set-auto').checked = c.auto_update;
+      $('#set-dumps').checked = c.dumps; $('#set-lan').checked = c.lan_access; $('#set-auto').checked = c.auto_update; $('#set-https').checked = c.https;
       for (const k of ['memory_limit', 'upload_max_filesize', 'post_max_size', 'max_execution_time']) $('#ini-' + k).value = c.php_ini[k];
       $('#set-home').textContent = state.status.home;
     });
     if ($('#set-dumps')) return null;
     return `<h1>Settings</h1><p class="sub">Stored in <span class="mono" id="set-home"></span>/config.json</p>
+    <div class="card"><label class="check"><input type="checkbox" id="set-https" onchange="act(()=>post('/api/settings',{https:this.checked}),'Saved')"> Serve every site over HTTPS (you can still switch single sites off)</label></div>
     <div class="card"><label class="check"><input type="checkbox" id="set-dumps" onchange="act(()=>post('/api/settings',{dumps:this.checked}),'Saved')"> Send <span class="mono">dump()</span> output to Pack instead of the page</label>
     <label class="check" style="margin-top:8px"><input type="checkbox" id="set-lan" onchange="act(()=>post('/api/settings',{lan_access:this.checked}),'Saved')"> Allow other devices on my network to open my sites</label>
     <label class="check" style="margin-top:8px"><input type="checkbox" id="set-auto" onchange="act(()=>post('/api/settings',{auto_update:this.checked}),'Saved')"> Install updates automatically (patch releases within the same version line)</label></div>
@@ -281,6 +304,11 @@ const pages = {
   },
 };
 
+function httpsHint() {
+  const s = state.status;
+  if (!s || s.ca_trusted) return '';
+  return `<div class="card banner"><div class="row between"><div><b>Trust Pack's HTTPS certificate</b><div class="muted">One click, so browsers show 🔒 for every <b>.${esc(s.tld)}</b> site instead of a warning.</div></div><button class="primary" onclick="setup(this)">Trust</button></div></div>`;
+}
 function shortPath(p) { if (!p) return ''; const parts = p.split('/'); return parts.slice(-3).join('/'); }
 function go(p) { page = p; location.hash = p; $('#main').innerHTML = ''; refresh(); }
 async function setup(btn) { btn.disabled = true; btn.textContent = 'Setting up…'; await act(() => post('/api/setup'), 'Pack is ready'); }
@@ -346,6 +374,13 @@ async function pollDumps() {
 }
 
 document.querySelectorAll('nav a').forEach(a => a.onclick = () => go(a.dataset.page));
+// Sites and dashboards open in the default browser, never inside the app.
+document.addEventListener('click', e => {
+  const a = e.target.closest('a[target=_blank]');
+  if (!a) return;
+  e.preventDefault();
+  post('/api/open', { url: a.href }).catch(err => toast(err.message, true));
+});
 window.onhashchange = () => { const p = location.hash.slice(1); if (p && p !== page) go(p); };
 (async () => {
   try { const d = await api('/api/dumps'); state.dumps = d.dumps; state.lastDump = state.seenDumps = d.dumps.length ? d.dumps[d.dumps.length - 1].id : 0; } catch {}

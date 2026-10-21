@@ -1,4 +1,4 @@
-//! Services — the things Herd Pro charges for, built from free, open-source
+//! Services — databases, caches, search, mail and storage, built from free, open-source
 //! binaries. Each kind knows how to download itself, initialise its data
 //! directory and run in the foreground under the supervisor.
 
@@ -44,6 +44,11 @@ pub fn kind(id: &str) -> Option<&'static Kind> {
 /// Kinds that are a project process rather than a downloaded package.
 pub fn is_project_process(kind: &str) -> bool {
     kind == "reverb"
+}
+
+/// `dir/rel` with the platform's executable suffix.
+fn exe_in(dir: &Path, rel: &str) -> PathBuf {
+    dir.join(crate::platform::exe(rel))
 }
 
 fn bin_dir(inst: &ServiceInstance) -> PathBuf {
@@ -100,7 +105,7 @@ pub async fn init(inst: &ServiceInstance) -> anyhow::Result<()> {
         "mysql" if !data.join("mysql").exists() => {
             std::fs::create_dir_all(&data)?;
             run_once(
-                &bin.join("bin/mysqld"),
+                &exe_in(&bin, "bin/mysqld"),
                 &["--no-defaults", "--initialize-insecure", &format!("--basedir={}", bin.display()), &format!("--datadir={}", data.display())],
                 &inst.id,
             )
@@ -109,7 +114,7 @@ pub async fn init(inst: &ServiceInstance) -> anyhow::Result<()> {
         "postgres" if !data.join("PG_VERSION").exists() => {
             let _ = std::fs::remove_dir_all(&data);
             run_once(
-                &bin.join("bin/initdb"),
+                &exe_in(&bin, "bin/initdb"),
                 &["-D", &data.display().to_string(), "-U", "root", "--auth=trust", "-E", "UTF8", "--locale=C"],
                 &inst.id,
             )
@@ -121,7 +126,10 @@ pub async fn init(inst: &ServiceInstance) -> anyhow::Result<()> {
 }
 
 async fn run_once(program: &Path, args: &[&str], id: &str) -> anyhow::Result<()> {
-    let out = tokio::process::Command::new(program).args(args).output().await.with_context(|| format!("running {}", program.display()))?;
+    let mut cmd = tokio::process::Command::new(program);
+    cmd.args(args);
+    crate::platform::no_window_tokio(&mut cmd);
+    let out = cmd.output().await.with_context(|| format!("running {}", program.display()))?;
     if !out.status.success() {
         bail!(
             "{id} init failed: {}{}",
@@ -141,36 +149,46 @@ pub fn spec(cfg: &Config, inst: &ServiceInstance) -> anyhow::Result<Spec> {
     let mut cwd = Some(data.clone());
     let (program, args): (PathBuf, Vec<String>) = match inst.kind.as_str() {
         "mysql" => (
-            bin.join("bin/mysqld"),
+            exe_in(&bin, "bin/mysqld"),
             vec![
                 "--no-defaults".into(),
                 format!("--basedir={}", bin.display()),
                 format!("--datadir={d}"),
                 format!("--port={port}"),
                 "--bind-address=127.0.0.1".into(),
-                format!("--socket={}", paths::run().join(format!("{}.sock", inst.id)).display()),
                 "--mysqlx=OFF".into(),
                 format!("--log-error={}", paths::logs().join(format!("{}.err.log", inst.id)).display()),
-            ],
+            ]
+            .into_iter()
+            // Unix socket for local clients; Windows uses TCP only.
+            .chain(cfg!(unix).then(|| format!("--socket={}", paths::run().join(format!("{}.sock", inst.id)).display())))
+            .collect(),
         ),
         "postgres" => (
-            bin.join("bin/postgres"),
-            vec!["-D".into(), d, "-p".into(), port, "-h".into(), "127.0.0.1".into(), "-k".into(), paths::run().display().to_string()],
+            exe_in(&bin, "bin/postgres"),
+            {
+                let mut a = vec!["-D".to_string(), d, "-p".into(), port, "-h".into(), "127.0.0.1".into()];
+                if cfg!(unix) {
+                    a.extend(["-k".to_string(), paths::run().display().to_string()]);
+                }
+                a
+            },
         ),
         "redis" => (
-            bin.join("valkey-server"),
-            vec!["--port".into(), port, "--bind".into(), "127.0.0.1".into(), "--dir".into(), d, "--daemonize".into(), "no".into()],
+            exe_in(&bin, "valkey-server"),
+            // The Windows build is MSYS2-based: it wants forward slashes.
+            vec!["--port".into(), port, "--bind".into(), "127.0.0.1".into(), "--dir".into(), crate::platform::slash(&data), "--daemonize".into(), "no".into()],
         ),
         "meilisearch" => (
-            bin.join("meilisearch"),
+            exe_in(&bin, "meilisearch"),
             vec!["--db-path".into(), format!("{d}/data.ms"), "--http-addr".into(), format!("127.0.0.1:{port}"), "--no-analytics".into(), "--env".into(), "development".into(), "--experimental-dumpless-upgrade".into()],
         ),
         "typesense" => (
-            bin.join("typesense-server"),
+            exe_in(&bin, "typesense-server"),
             vec![format!("--data-dir={d}"), "--api-key=pack".into(), "--api-address=127.0.0.1".into(), format!("--api-port={port}"), "--enable-cors".into()],
         ),
         "mail" => (
-            bin.join("mailpit"),
+            exe_in(&bin, "mailpit"),
             vec![
                 "--smtp".into(),
                 format!("127.0.0.1:{port}"),
@@ -183,7 +201,7 @@ pub fn spec(cfg: &Config, inst: &ServiceInstance) -> anyhow::Result<Spec> {
             ],
         ),
         "s3" => (
-            bin.join("rustfs"),
+            exe_in(&bin, "rustfs"),
             vec![
                 "server".into(),
                 "--address".into(),
@@ -199,14 +217,14 @@ pub fn spec(cfg: &Config, inst: &ServiceInstance) -> anyhow::Result<Spec> {
             ],
         ),
         "mongodb" => (
-            bin.join("bin/mongod"),
+            exe_in(&bin, "bin/mongod"),
             vec!["--dbpath".into(), d, "--port".into(), port, "--bind_ip".into(), "127.0.0.1".into()],
         ),
         "reverb" => {
             let project = inst.options.get("path").context("Reverb needs a project path")?;
             cwd = Some(PathBuf::from(project));
             let php = crate::php::version_for_dir(cfg, Path::new(project));
-            env.insert("PHP_INI_SCAN_DIR".into(), paths::php_dir(&php).join("conf.d").display().to_string());
+            env.insert("PHP_INI_SCAN_DIR".into(), crate::php::scan_dir(&php));
             (
                 crate::php::cli(&php),
                 vec!["artisan".into(), "reverb:start".into(), "--host=127.0.0.1".into(), format!("--port={port}")],
@@ -253,11 +271,11 @@ pub async fn create_database(inst: &ServiceInstance, name: &str) -> anyhow::Resu
     match inst.kind.as_str() {
         "mysql" => {
             let sql = format!("CREATE DATABASE IF NOT EXISTS `{name}`");
-            run_once(&bin.join("bin/mysql"), &["-uroot", "-h127.0.0.1", &format!("-P{port}"), "-e", &sql], &inst.id).await
+            run_once(&exe_in(&bin, "bin/mysql"), &["-uroot", "-h127.0.0.1", &format!("-P{port}"), "-e", &sql], &inst.id).await
         }
         "postgres" => {
             let sql = format!("CREATE DATABASE \"{name}\"");
-            run_once(&bin.join("bin/psql"), &["-h", "127.0.0.1", "-p", &port, "-U", "root", "-d", "postgres", "-c", &sql], &inst.id).await
+            run_once(&exe_in(&bin, "bin/psql"), &["-h", "127.0.0.1", "-p", &port, "-U", "root", "-d", "postgres", "-c", &sql], &inst.id).await
         }
         other => bail!("{other} has no databases"),
     }
@@ -266,7 +284,7 @@ pub async fn create_database(inst: &ServiceInstance, name: &str) -> anyhow::Resu
 /// Client binaries worth putting on PATH (mysql, psql, valkey-cli → redis-cli, ...).
 pub fn client_binaries(inst: &ServiceInstance) -> Vec<(String, PathBuf)> {
     let bin = bin_dir(inst);
-    let pick = |names: &[(&str, &str)]| names.iter().map(|(link, rel)| (link.to_string(), bin.join(rel))).collect();
+    let pick = |names: &[(&str, &str)]| names.iter().map(|(link, rel)| (link.to_string(), exe_in(&bin, rel))).collect();
     match inst.kind.as_str() {
         "mysql" => pick(&[("mysql", "bin/mysql"), ("mysqldump", "bin/mysqldump"), ("mysqladmin", "bin/mysqladmin")]),
         "postgres" => pick(&[("psql", "bin/psql"), ("pg_dump", "bin/pg_dump"), ("pg_restore", "bin/pg_restore"), ("createdb", "bin/createdb")]),

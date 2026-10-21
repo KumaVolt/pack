@@ -2,9 +2,10 @@
 //! from the Pack repo: `dist/manifest.json` lists release assets with
 //! SHA-256, built by `scripts/packages.py` in CI.
 //!
-//! Layout: `packages/<name>/<series>/<version>/` plus a `current` symlink.
-//! Updating a series installs the new version next to the old one, flips the
-//! symlink and restarts whatever uses it; the previous version is removed
+//! Layout: `packages/<name>/<series>/<version>/` plus a `current` file naming
+//! the active version (a file, not a symlink, so it works on Windows too).
+//! Updating a series installs the new version next to the old one, switches
+//! `current` and restarts whatever uses it; the previous version is removed
 //! once the switch succeeded.
 
 use crate::{download, paths};
@@ -24,6 +25,9 @@ pub struct Entry {
     pub name: String,
     pub series: String,
     pub version: String,
+    /// "macos", "linux", "windows" or "any" (entries without it predate Linux/Windows).
+    #[serde(default = "macos")]
+    pub os: String,
     pub arch: String,
     pub url: String,
     pub sha256: String,
@@ -48,8 +52,18 @@ pub struct Installed {
     pub update: bool,
 }
 
+fn macos() -> String {
+    "macos".into()
+}
+
 pub fn host_arch() -> &'static str {
-    if cfg!(target_arch = "aarch64") { "arm64" } else { "x86_64" }
+    crate::platform::target().1
+}
+
+/// "macos-arm64", "linux-x86_64", "windows-x86_64", ...
+pub fn host_target() -> String {
+    let (os, arch) = crate::platform::target();
+    format!("{os}-{arch}")
 }
 
 fn source() -> String {
@@ -106,7 +120,8 @@ fn local_path(s: &str) -> &str {
 
 impl Manifest {
     fn for_host<'a, 'n>(&'a self, name: &'n str) -> impl Iterator<Item = &'a Entry> + use<'a, 'n> {
-        self.packages.iter().filter(move |e| e.name == name && (e.arch == host_arch() || e.arch == "any"))
+        let (os, arch) = crate::platform::target();
+        self.packages.iter().filter(move |e| e.name == name && (e.arch == "any" || (e.os == os && e.arch == arch)))
     }
 
     /// Series of a package available for this Mac, newest first.
@@ -153,14 +168,33 @@ pub fn series_dir(name: &str, series: &str) -> PathBuf {
     paths::home().join("packages").join(name).join(series)
 }
 
-/// Where the active version of a series lives (a symlink).
-pub fn current(name: &str, series: &str) -> PathBuf {
+fn current_file(name: &str, series: &str) -> PathBuf {
     series_dir(name, series).join("current")
 }
 
+/// Where the active version of a series lives.
+pub fn current(name: &str, series: &str) -> PathBuf {
+    let dir = series_dir(name, series);
+    match installed_version(name, series) {
+        Some(v) => dir.join(v),
+        None => dir.join("none"),
+    }
+}
+
 pub fn installed_version(name: &str, series: &str) -> Option<String> {
-    let target = std::fs::read_link(current(name, series)).ok()?;
-    Some(target.file_name()?.to_string_lossy().to_string())
+    let v = std::fs::read_to_string(current_file(name, series)).ok()?;
+    let v = v.trim();
+    (!v.is_empty() && series_dir(name, series).join(v).is_dir()).then(|| v.to_string())
+}
+
+/// Make `version` the active one (atomic rename of the `current` file).
+pub fn set_current(name: &str, series: &str, version: &str) -> anyhow::Result<()> {
+    let dir = series_dir(name, series);
+    std::fs::create_dir_all(&dir)?;
+    let tmp = dir.join(".current.tmp");
+    std::fs::write(&tmp, version)?;
+    std::fs::rename(&tmp, current_file(name, series))?;
+    Ok(())
 }
 
 pub fn is_installed(name: &str, series: &str) -> bool {
@@ -190,7 +224,7 @@ fn read_dirs(dir: &Path) -> Vec<String> {
         .filter(|e| {
             let name = e.file_name();
             let name = name.to_string_lossy();
-            // Real directories only: skip the `current` symlink and temp dirs.
+            // Version directories only: skip the `current` file and temp dirs.
             !name.starts_with('.') && e.file_type().is_ok_and(|t| t.is_dir())
         })
         .map(|e| e.file_name().to_string_lossy().to_string())
@@ -214,7 +248,7 @@ pub async fn install(name: &str, series: &str, version: Option<&str>) -> anyhow:
     let entry = entry.with_context(|| {
         let have = m.series(name);
         if have.is_empty() {
-            format!("{name} is not available for this Mac ({}) in the package manifest", host_arch())
+            format!("{name} is not available for {} in the package manifest", host_target())
         } else {
             format!("{name} {series} is not available — choose one of: {}", have.join(", "))
         }
@@ -233,12 +267,7 @@ pub async fn install(name: &str, series: &str, version: Option<&str>) -> anyhow:
         std::fs::rename(&tmp, &target)?;
         let _ = std::fs::remove_file(&archive);
     }
-    // Atomically point `current` at the new version.
-    let link = current(name, series);
-    let tmp_link = dir.join(".current.tmp");
-    let _ = std::fs::remove_file(&tmp_link);
-    std::os::unix::fs::symlink(&entry.version, &tmp_link)?;
-    std::fs::rename(&tmp_link, &link)?;
+    set_current(name, series, &entry.version)?;
     Ok(entry.version)
 }
 

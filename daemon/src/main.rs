@@ -12,6 +12,7 @@ mod logs;
 mod paths;
 mod packages;
 mod php;
+mod platform;
 mod services;
 mod sites;
 mod supervisor;
@@ -32,14 +33,17 @@ struct Cli {
 enum Cmd {
     /// Run the Pack daemon in the foreground
     Daemon,
-    /// Download Caddy/PHP/Composer, configure .test DNS + HTTPS (asks for sudo) and start at login
+    /// Download the web server, PHP, Composer and services, set up .test domains + HTTPS and start at login
     Install {
-        /// Skip the LaunchAgent (run `pack daemon` yourself)
+        /// Don't start Pack at login (run `pack daemon` yourself)
         #[arg(long)]
         no_agent: bool,
         /// Only web server + PHP + Composer, no MySQL/Postgres/Redis/Mail
         #[arg(long)]
         minimal: bool,
+        /// Leave DNS, certificates and PATH alone (no admin prompt; for CI)
+        #[arg(long)]
+        no_system: bool,
     },
     /// Update PHP, services and tools to the newest build of their version line
     Update {
@@ -53,9 +57,12 @@ enum Cmd {
     },
     /// Update the pack CLI/daemon itself from the latest Pack release
     SelfUpdate,
+    /// Point the PATH shims (and autostart) at this pack binary
+    #[command(hide = true)]
+    Refresh,
     /// Everything that can be installed, per version line
     Available,
-    /// Stop Pack and remove the LaunchAgent and resolver
+    /// Stop Pack and remove autostart and the .test DNS setup
     Uninstall,
     /// Show what is running
     Status,
@@ -206,16 +213,10 @@ fn main() {
             eprintln!("PHP {version} is not installed — run `pack php install {version}`");
             std::process::exit(1);
         }
-        use std::os::unix::process::CommandExt;
         let dir = paths::php_dir(&version);
-        let err = std::process::Command::new(php::cli(&version))
-            .arg("-c")
-            .arg(dir.join("php.ini"))
-            .args(args)
-            .env("PHP_INI_SCAN_DIR", dir.join("conf.d"))
-            .exec();
-        eprintln!("could not run PHP {version}: {err}");
-        std::process::exit(1);
+        let mut cmd = std::process::Command::new(php::cli(&version));
+        cmd.arg("-c").arg(dir.join("php.ini")).args(args).env("PHP_INI_SCAN_DIR", php::scan_dir(&version));
+        platform::exec(cmd);
     }
     let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
     if let Err(e) = rt.block_on(run(cli.cmd)) {
@@ -232,7 +233,7 @@ async fn daemon() -> anyhow::Result<()> {
     let app = app::App::new();
     let cfg = app.config();
     let tld = cfg.tld.clone();
-    let port = cfg.dns_port;
+    let port = platform::dns_port(&cfg);
     tokio::spawn(async move {
         if let Err(e) = dns::serve(port, tld).await {
             app::tracing_log(&format!("DNS server failed: {e:#}"));
@@ -265,6 +266,13 @@ async fn daemon() -> anyhow::Result<()> {
             tokio::time::sleep(std::time::Duration::from_secs(2)).await;
             let now = fingerprint(&watcher);
             if now != last {
+                // New projects (e.g. `laravel new`) get APP_URL pointed at their .test URL.
+                for site in sites::all(&watcher.config()) {
+                    let key = format!("{}={}|{}", site.name, site.docroot.display(), site.framework);
+                    if !last.contains(&key) {
+                        sites::sync_app_url(&site);
+                    }
+                }
                 last = now;
                 if let Err(e) = watcher.reconcile().await {
                     app::tracing_log(&format!("reconcile: {e:#}"));
@@ -302,29 +310,15 @@ async fn ensure_daemon() -> anyhow::Result<()> {
     if daemon_up().await {
         return Ok(());
     }
-    let agent = system::launch_agent_path();
-    if agent.exists() {
-        let uid = unsafe { libc::getuid() };
-        let _ = std::process::Command::new("launchctl")
-            .args(["kickstart", &format!("gui/{uid}/{}", system::LABEL)])
-            .output();
+    if platform::autostart_installed() && !cfg!(windows) {
+        platform::kick_autostart(false);
     } else {
         paths::ensure_layout()?;
         let log = std::fs::OpenOptions::new().create(true).append(true).open(paths::logs().join("daemon.log"))?;
-        use std::os::unix::process::CommandExt;
         let mut cmd = std::process::Command::new(std::env::current_exe()?);
-        // Own session, so closing the terminal doesn't take the daemon down.
-        unsafe {
-            cmd.pre_exec(|| {
-                libc::setsid();
-                Ok(())
-            });
-        }
-        cmd.arg("daemon")
-            .stdin(std::process::Stdio::null())
-            .stdout(log.try_clone()?)
-            .stderr(log)
-            .spawn()?;
+        // Detached, so closing the terminal doesn't take the daemon down.
+        platform::detach(&mut cmd);
+        cmd.arg("daemon").stdin(std::process::Stdio::null()).stdout(log.try_clone()?).stderr(log).spawn()?;
     }
     for _ in 0..50 {
         if daemon_up().await {
@@ -426,9 +420,15 @@ async fn run(cmd: Cmd) -> anyhow::Result<()> {
     match cmd {
         Cmd::Daemon => daemon().await?,
         Cmd::WhichPhp { .. } | Cmd::ExecPhp { .. } => unreachable!(),
-        Cmd::Install { no_agent, minimal } => install(no_agent, minimal).await?,
+        Cmd::Install { no_agent, minimal, no_system } => install(no_agent, minimal, no_system).await?,
         Cmd::Update { check, name, series } => update(check, name, series).await?,
         Cmd::SelfUpdate => self_update().await?,
+        Cmd::Refresh => {
+            system::write_shims(&config::Config::load())?;
+            if platform::autostart_installed() {
+                platform::install_autostart(&std::env::current_exe()?, &paths::logs().join("daemon.log"))?;
+            }
+        }
         Cmd::Available => {
             let res = get("/api/packages").await?;
             for (name, lines) in res["catalog"].as_object().into_iter().flatten() {
@@ -442,12 +442,13 @@ async fn run(cmd: Cmd) -> anyhow::Result<()> {
             }
         }
         Cmd::Uninstall => {
-            let uid = unsafe { libc::getuid() };
-            let _ = std::process::Command::new("launchctl").args(["bootout", &format!("gui/{uid}/{}", system::LABEL)]).output();
-            let _ = std::fs::remove_file(system::launch_agent_path());
+            platform::remove_autostart();
+            if daemon_up().await {
+                let _ = post("/api/shutdown", json!({})).await;
+            }
             let cfg = config::Config::load();
-            if system::resolver_ok(&cfg) {
-                system::run_privileged_tty(&format!("rm -f {}", system::resolver_file(&cfg).display()))?;
+            if let Some(script) = platform::uninstall_script(&cfg) {
+                platform::run_privileged_tty(&script)?;
             }
             println!("Pack stopped. Your data is still in {} — delete it to remove everything.", paths::home().display());
         }
@@ -455,7 +456,7 @@ async fn run(cmd: Cmd) -> anyhow::Result<()> {
             let s = get("/api/status").await?;
             println!("Pack {}  ({})", s["version"].as_str().unwrap_or(""), s["home"].as_str().unwrap_or(""));
             println!("  web server   {}", state_label(&s["caddy"]["status"]));
-            let dns = if s["dns"]["resolver"].as_bool() == Some(true) { "\x1b[32m● ok\x1b[0m" } else { "\x1b[31m● /etc/resolver missing — run `pack install`\x1b[0m" };
+            let dns = if s["dns"]["resolver"].as_bool() == Some(true) { "\x1b[32m● ok\x1b[0m" } else { "\x1b[31m● not set up — run `pack install`\x1b[0m" };
             println!("  .{} DNS    {dns}", s["tld"].as_str().unwrap_or("test"));
             let ca = if s["ca_trusted"].as_bool() == Some(true) { "\x1b[32m● trusted\x1b[0m" } else { "\x1b[33m○ not trusted\x1b[0m" };
             println!("  HTTPS CA     {ca}");
@@ -534,7 +535,7 @@ async fn run(cmd: Cmd) -> anyhow::Result<()> {
                 .find(|s| s["name"] == name.as_str())
                 .and_then(|s| s["url"].as_str().map(str::to_string))
                 .ok_or_else(|| anyhow::anyhow!("no site {name}"))?;
-            std::process::Command::new("open").arg(url).status()?;
+            platform::open_url(&url)?;
         }
         Cmd::Share { name } => {
             let name = site_name(name)?;
@@ -714,21 +715,21 @@ async fn service(cmd: ServiceCmd) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn install(no_agent: bool, minimal: bool) -> anyhow::Result<()> {
+async fn install(no_agent: bool, minimal: bool, no_system: bool) -> anyhow::Result<()> {
     paths::ensure_layout()?;
     let cfg = config::Config::load();
     if !paths::config_file().exists() {
         cfg.save()?;
     }
     if no_agent {
+        system::write_shims(&cfg)?;
         ensure_daemon().await?;
     } else if daemon_up().await {
         eprintln!("→ Pack is already running");
     } else {
-        // The LaunchAgent runs bin/pack, so the shims (incl. that link) come first.
         system::write_shims(&cfg)?;
-        eprintln!("→ Starting Pack at login (LaunchAgent)");
-        system::install_launch_agent()?;
+        eprintln!("→ Starting Pack at login");
+        platform::install_autostart(&std::env::current_exe()?, &paths::logs().join("daemon.log"))?;
         ensure_daemon().await?;
     }
     eprintln!("→ Installing Caddy, PHP {}, Composer{}", cfg.php, if minimal { "" } else { ", MySQL, PostgreSQL, Redis and Mail" });
@@ -736,13 +737,12 @@ async fn install(no_agent: bool, minimal: bool) -> anyhow::Result<()> {
     if !wait_for_jobs().await? {
         anyhow::bail!("installation failed");
     }
-    let ca = system::ensure_ca().await.ok().filter(|_| !system::ca_trusted());
-    if !system::resolver_ok(&cfg) || ca.is_some() {
-        eprintln!("→ Configuring .{} DNS and trusting the HTTPS certificate (sudo)", cfg.tld);
-        system::run_privileged_tty(&system::privileged_script(&cfg, ca.as_deref()))?;
-    }
-    if system::add_to_path()? {
-        eprintln!("→ Added {} to PATH in ~/.zshrc (open a new terminal)", paths::bin().display());
+    if !no_system {
+        eprintln!("→ Setting up .{} domains and trusted HTTPS (asks for your password once)", cfg.tld);
+        system::configure_system(&cfg, false).await?;
+        if system::add_to_path()? {
+            eprintln!("→ Added {} to your PATH (open a new terminal)", paths::bin().display());
+        }
     }
     if !minimal {
         let svc = get("/api/services").await?;
@@ -751,12 +751,11 @@ async fn install(no_agent: bool, minimal: bool) -> anyhow::Result<()> {
             println!("  {:<10} {}  127.0.0.1:{}", i["id"].as_str().unwrap_or(""), state_label(&i["status"]), i["port"]);
         }
     }
-    println!(
-        "\nPack is ready. Put projects in {} and open http://<folder>.{} — dashboard: http://127.0.0.1:{}",
-        cfg.paths.first().map(|p| paths::tilde(p)).unwrap_or_default(),
-        cfg.tld,
-        api::PORT
-    );
+    let scheme = if cfg.https { "https" } else { "http" };
+    match cfg.paths.first() {
+        Some(p) => println!("\nPack is ready. Put projects in {} and open {scheme}://<folder>.{}", paths::tilde(p), cfg.tld),
+        None => println!("\nPack is ready. Run `pack link` in a project to serve it at {scheme}://<folder>.{}", cfg.tld),
+    }
     Ok(())
 }
 
@@ -803,7 +802,7 @@ async fn self_update() -> anyhow::Result<()> {
         println!("pack {} is the latest version.", env!("CARGO_PKG_VERSION"));
         return Ok(());
     }
-    let asset = format!("pack-{latest}-macos-{}.tar.gz", packages::host_arch());
+    let asset = format!("pack-{latest}-{}.tar.gz", packages::host_target());
     let base = format!("https://github.com/{}/releases/download/{tag}", packages::REPO);
     eprintln!("Downloading pack {latest}…");
     let file = download::fetch(&format!("{base}/{asset}"), &format!("pack {latest}")).await?;
@@ -816,14 +815,17 @@ async fn self_update() -> anyhow::Result<()> {
     }
     let dir = packages::series_dir("pack", "stable").join(latest);
     download::extract(&file, &dir, 0).await?;
-    let link = paths::bin().join("pack");
-    let tmp = paths::bin().join(".pack.tmp");
-    let _ = std::fs::remove_file(&tmp);
-    std::os::unix::fs::symlink(dir.join("pack"), &tmp)?;
-    std::fs::rename(&tmp, &link)?;
-    if system::launch_agent_path().exists() {
-        let uid = unsafe { libc::getuid() };
-        let _ = std::process::Command::new("launchctl").args(["kickstart", "-k", &format!("gui/{uid}/{}", system::LABEL)]).output();
+    // Let the new binary point the shims and autostart at itself, then restart.
+    let new = dir.join(platform::exe("pack"));
+    let st = std::process::Command::new(&new).arg("refresh").status()?;
+    if !st.success() {
+        anyhow::bail!("the new pack binary failed to start");
+    }
+    if daemon_up().await {
+        let _ = post("/api/shutdown", json!({})).await;
+    }
+    if platform::autostart_installed() && !cfg!(windows) {
+        platform::kick_autostart(true);
     }
     println!("pack updated to {latest}.");
     Ok(())

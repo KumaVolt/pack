@@ -1,5 +1,5 @@
-//! Filesystem layout. Everything Pack owns lives under one directory,
-//! `~/Library/Application Support/Pack` (override with `PACK_HOME`).
+//! Filesystem layout. Everything Pack owns lives under one directory
+//! (see `platform::default_home`; override with `PACK_HOME`).
 
 use std::path::PathBuf;
 
@@ -7,11 +7,11 @@ pub fn home() -> PathBuf {
     if let Ok(dir) = std::env::var("PACK_HOME") {
         return PathBuf::from(dir);
     }
-    user_home().join("Library/Application Support/Pack")
+    crate::platform::default_home()
 }
 
 pub fn user_home() -> PathBuf {
-    PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/tmp".into()))
+    crate::platform::user_home()
 }
 
 pub fn config_file() -> PathBuf {

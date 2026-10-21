@@ -7,6 +7,7 @@ use crate::config::Config;
 use crate::download;
 use crate::packages;
 use crate::paths;
+use crate::platform;
 use crate::supervisor::Spec;
 use anyhow::{Context, bail};
 use serde::Serialize;
@@ -27,10 +28,43 @@ pub fn version_key(v: &str) -> Vec<u64> {
 }
 
 pub fn cli(version: &str) -> PathBuf {
-    packages::current("php", version).join("php")
+    packages::current("php", version).join(platform::exe("php"))
 }
+
+/// The FastCGI server: php-fpm on macOS/Linux, php-cgi on Windows.
 pub fn fpm(version: &str) -> PathBuf {
-    packages::current("php", version).join("php-fpm")
+    let name = if cfg!(windows) { "php-cgi" } else { "php-fpm" };
+    packages::current("php", version).join(platform::exe(name))
+}
+
+/// php-cgi can't fork workers on Windows; run a few and let Caddy balance.
+const WINDOWS_WORKERS: u16 = 4;
+
+fn worker_port(version: &str, i: u16) -> u16 {
+    let k = packages::key(version);
+    20000 + (*k.first().unwrap_or(&8) as u16) * 1000 + (*k.get(1).unwrap_or(&0) as u16) * 10 + i
+}
+
+/// FastCGI addresses Caddy talks to for a version.
+pub fn upstreams(version: &str) -> Vec<String> {
+    if cfg!(windows) {
+        (0..WINDOWS_WORKERS).map(|i| format!("127.0.0.1:{}", worker_port(version, i))).collect()
+    } else {
+        vec![format!("unix/{}", paths::php_socket(version).display())]
+    }
+}
+
+/// PHP_INI_SCAN_DIR: the package's own conf.d (Windows extension list) and
+/// the user's conf.d for this version.
+pub fn scan_dir(version: &str) -> String {
+    let sep = if cfg!(windows) { ";" } else { ":" };
+    let pkg = packages::current("php", version).join("conf.d");
+    let user = paths::php_dir(version).join("conf.d");
+    if pkg.exists() {
+        format!("{}{sep}{}", pkg.display(), user.display())
+    } else {
+        user.display().to_string()
+    }
 }
 
 pub fn installed() -> Vec<InstalledPhp> {
@@ -94,6 +128,22 @@ pub fn write_config(version: &str, cfg: &Config) -> anyhow::Result<()> {
     let confd = dir.join("conf.d");
     std::fs::create_dir_all(&confd)?;
     let ini = &cfg.php_ini;
+    let platform_ini = if cfg!(windows) {
+        // Official Windows builds load extensions as DLLs from ext/.
+        format!(
+            "extension_dir = \"{}\"\n",
+            platform::slash(&packages::current("php", version).join("ext"))
+        )
+    } else if cfg!(target_os = "macos") {
+        "openssl.cafile = /etc/ssl/cert.pem\ncurl.cainfo = /etc/ssl/cert.pem\n".to_string()
+    } else {
+        // Static (musl) builds don't know the distro's CA bundle location.
+        ["/etc/ssl/certs/ca-certificates.crt", "/etc/pki/tls/certs/ca-bundle.crt", "/etc/ssl/cert.pem"]
+            .iter()
+            .find(|p| std::path::Path::new(p).exists())
+            .map(|p| format!("openssl.cafile = {p}\ncurl.cainfo = {p}\n"))
+            .unwrap_or_default()
+    };
     std::fs::write(
         dir.join("php.ini"),
         format!(
@@ -113,14 +163,16 @@ pub fn write_config(version: &str, cfg: &Config) -> anyhow::Result<()> {
              opcache.revalidate_freq = 0\n\
              opcache.jit = off\n\
              realpath_cache_size = 4096K\n\
-             openssl.cafile = /etc/ssl/cert.pem\n\
-             curl.cainfo = /etc/ssl/cert.pem\n",
+             {platform_ini}",
             ini.memory_limit, ini.upload_max_filesize, ini.post_max_size, ini.max_execution_time
         ),
     )?;
     let custom = confd.join("99-custom.ini");
     if !custom.exists() {
         std::fs::write(custom, "; Your php.ini overrides for this PHP version\n")?;
+    }
+    if cfg!(windows) {
+        return Ok(());
     }
     let tag = version.replace('.', "");
     let prepend = if cfg.dumps {
@@ -154,11 +206,33 @@ pub fn write_config(version: &str, cfg: &Config) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn fpm_spec(version: &str) -> Spec {
+/// The supervised FastCGI processes for a version: one php-fpm master, or a
+/// few php-cgi workers on Windows.
+pub fn pool_specs(version: &str, cfg: &Config) -> Vec<Spec> {
     let dir = paths::php_dir(version);
     let mut env = BTreeMap::new();
-    env.insert("PHP_INI_SCAN_DIR".into(), dir.join("conf.d").display().to_string());
-    Spec {
+    env.insert("PHP_INI_SCAN_DIR".into(), scan_dir(version));
+    let log = paths::logs().join(format!("php{}-fpm.log", version.replace('.', "")));
+    if cfg!(windows) {
+        // php-cgi exits after PHP_FCGI_MAX_REQUESTS; the supervisor restarts it.
+        env.insert("PHP_FCGI_MAX_REQUESTS".into(), "10000".into());
+        return (0..WINDOWS_WORKERS)
+            .map(|i| {
+                let mut args = vec![
+                    "-b".to_string(),
+                    format!("127.0.0.1:{}", worker_port(version, i)),
+                    "-c".into(),
+                    dir.join("php.ini").display().to_string(),
+                ];
+                if cfg.dumps {
+                    args.push("-d".into());
+                    args.push(format!("auto_prepend_file={}", platform::slash(&paths::tools().join("dumps.php"))));
+                }
+                Spec { name: format!("php-{version}-{i}"), program: fpm(version), args, env: env.clone(), cwd: None, log: log.clone() }
+            })
+            .collect();
+    }
+    vec![Spec {
         name: format!("php-{version}"),
         program: fpm(version),
         args: vec![
@@ -170,17 +244,24 @@ pub fn fpm_spec(version: &str) -> Spec {
         ],
         env,
         cwd: None,
-        log: paths::logs().join(format!("php{}-fpm.log", version.replace('.', ""))),
+        log,
+    }]
+}
+
+/// Is the FastCGI side of a version ready for Caddy?
+pub fn pool_ready(version: &str) -> bool {
+    if cfg!(windows) {
+        std::net::TcpStream::connect_timeout(&([127, 0, 0, 1], worker_port(version, 0)).into(), std::time::Duration::from_millis(100)).is_ok()
+    } else {
+        paths::php_socket(version).exists()
     }
 }
 
 /// Which PHP version the CLI should use in `dir`: a site's isolated version
 /// wins, then a `.php-version` file, then the default.
 pub fn version_for_dir(cfg: &Config, dir: &std::path::Path) -> String {
-    for site in crate::sites::all(cfg) {
-        if dir.starts_with(&site.path) {
-            return site.php;
-        }
+    if let Some(site) = crate::sites::for_dir(cfg, dir) {
+        return site.php;
     }
     let mut cur = Some(dir);
     while let Some(d) = cur {
