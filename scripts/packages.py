@@ -109,6 +109,10 @@ def run(cmd, **kw):
 
 def untar(archive, into, strip=0):
     os.makedirs(into, exist_ok=True)
+    if str(archive).endswith(".zip"):
+        # GNU tar (CI's ubuntu runners) can't read zips.
+        run(["unzip", "-q", "-o", str(archive), "-d", str(into)])
+        return
     cmd = ["tar", "-xf", str(archive), "-C", str(into)]
     if strip:
         cmd.append(f"--strip-components={strip}")
