@@ -16,7 +16,7 @@ Legend: ✅ done and tested · 🟡 partial · ⬜ not yet
 | `proxy` / `unproxy` | Caddy `reverse_proxy` | ✅ |
 | `share` (Expose, paid beyond the free tier) | free Cloudflare quick tunnel (`cloudflared`, no account) | ✅ |
 | `open` | same | ✅ |
-| PHP 7.4–8.5 | 8.1–8.5, built by this repo's CI with the full extension set | 🟡 no 7.4/8.0 |
+| PHP 7.4–8.5 | 8.2–8.5, built by this repo's CI with the full extension set | 🟡 no 7.4–8.1 (EOL; 8.1 fails on current Xcode) |
 | `php`, `composer`, `laravel` on PATH | shims in `~/Library/Application Support/Pack/bin`, `php84` etc. | ✅ |
 | Valet drivers | detection for Laravel, Statamic, Symfony, WordPress, Bedrock, Craft, static | 🟡 |
 | `www.` and wildcard subdomains | `*.site.test` served by the site | ✅ |

@@ -4,7 +4,7 @@ A free, open-source local PHP development environment for macOS. It's a Laravel 
 
 - **Sites:** park a folder and every project in it is served at `http://<folder>.test`. You can also `link`, `secure` (HTTPS), `isolate` (PHP per site), `proxy` and `share` (public URL through a free Cloudflare tunnel).
 - **In the box:** `pack install` sets up the web server, PHP, Composer, MySQL, PostgreSQL, Redis and Mail. Everything is prebuilt by this repo's CI, so nothing compiles on your Mac.
-- **PHP 8.1–8.5:** static builds with intl, opcache, sodium, redis, pdo_* and more. Each version gets its own PHP-FPM pool. `php`, `php84`, `composer` and `laravel` are put on your PATH.
+- **PHP 8.2–8.5:** static builds with intl, opcache, sodium, redis, pdo_* and more. Each version gets its own PHP-FPM pool. `php`, `php84`, `composer` and `laravel` are put on your PATH.
 - **Services:** MySQL 8.4/9.7, PostgreSQL 14–18, Redis (Valkey 8/9), Meilisearch, Typesense, Mail (Mailpit), S3 (RustFS), MongoDB and Laravel Reverb.
 - **Versions and updates:** several versions can be installed side by side. `pack update` (or the Update button in the app) moves each one to the newest patch of its version line. `pack service version mysql 9.7` upgrades a database in place and keeps its data. `pack self-update` updates Pack itself.
 - **Dumps:** `dump()`/`dd()` output from your sites appears in the app, with file and line. `pack dumps` streams it to the terminal.
