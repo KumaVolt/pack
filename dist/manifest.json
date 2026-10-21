@@ -1,6 +1,6 @@
 {
  "schema": 1,
- "generated": "2026-10-21T12:23:15+00:00",
+ "generated": "2026-10-21T12:49:38+00:00",
  "packages": [
   {
    "name": "caddy",
@@ -147,6 +147,78 @@
    "size": 124280780
   },
   {
+   "name": "mysql",
+   "series": "8.4",
+   "version": "8.4.11",
+   "arch": "x86_64",
+   "url": "https://github.com/KumaVolt/pack/releases/download/mysql-8.4.11/mysql-8.4.11-macos-x86_64.tar.gz",
+   "sha256": "fd29bb60046e650bb53853357acdd8b5cf2a8f2066b01c03a8060ffc6058b8d8",
+   "size": 129791907
+  },
+  {
+   "name": "php",
+   "series": "8.5",
+   "version": "8.5.11",
+   "arch": "arm64",
+   "url": "https://github.com/KumaVolt/pack/releases/download/php-8.5.11/php-8.5.11-macos-arm64.tar.gz",
+   "sha256": "d97534ee0ccf130ca99dc11e9cc4f1cf5b75e580e0c09d06eb3c420139e94a4d",
+   "size": 51874827
+  },
+  {
+   "name": "php",
+   "series": "8.4",
+   "version": "8.4.26",
+   "arch": "arm64",
+   "url": "https://github.com/KumaVolt/pack/releases/download/php-8.4.26/php-8.4.26-macos-arm64.tar.gz",
+   "sha256": "37865ed3dfd76c01213b1ce39dc5b83440dde2e1575a1539fbb972cd5192e741",
+   "size": 51062472
+  },
+  {
+   "name": "php",
+   "series": "8.4",
+   "version": "8.4.26",
+   "arch": "x86_64",
+   "url": "https://github.com/KumaVolt/pack/releases/download/php-8.4.26/php-8.4.26-macos-x86_64.tar.gz",
+   "sha256": "b8ffacec5fdc8438633760decfb3b3562c697335fb1fd4ed9e52c281ffc216e7",
+   "size": 50998507
+  },
+  {
+   "name": "php",
+   "series": "8.3",
+   "version": "8.3.35",
+   "arch": "arm64",
+   "url": "https://github.com/KumaVolt/pack/releases/download/php-8.3.35/php-8.3.35-macos-arm64.tar.gz",
+   "sha256": "94819f517fac03ff809c1a9388d39ff0cb59baca792fbd1d252da66e32f0e02b",
+   "size": 49746974
+  },
+  {
+   "name": "php",
+   "series": "8.3",
+   "version": "8.3.35",
+   "arch": "x86_64",
+   "url": "https://github.com/KumaVolt/pack/releases/download/php-8.3.35/php-8.3.35-macos-x86_64.tar.gz",
+   "sha256": "54cd1c8cb1acc461a47205e786fb52d734f1ad064dcdcab20b1fa69484dfdd21",
+   "size": 49198425
+  },
+  {
+   "name": "php",
+   "series": "8.2",
+   "version": "8.2.34",
+   "arch": "arm64",
+   "url": "https://github.com/KumaVolt/pack/releases/download/php-8.2.34/php-8.2.34-macos-arm64.tar.gz",
+   "sha256": "351245af0ae9cb64fab81bdb99b06e9fcc283bf345c142d054c7c39f2865276f",
+   "size": 49534796
+  },
+  {
+   "name": "php",
+   "series": "8.2",
+   "version": "8.2.34",
+   "arch": "x86_64",
+   "url": "https://github.com/KumaVolt/pack/releases/download/php-8.2.34/php-8.2.34-macos-x86_64.tar.gz",
+   "sha256": "976268b7c81d5b38ea99d4220d1d91c2fc40ee102fbef5694341dc032c487692",
+   "size": 48970655
+  },
+  {
    "name": "postgres",
    "series": "18",
    "version": "18.6.1",
@@ -271,6 +343,15 @@
    "url": "https://github.com/KumaVolt/pack/releases/download/redis-8.1.10/redis-8.1.10-macos-x86_64.tar.gz",
    "sha256": "5dd2584431b6547f0e35fc471bb68bb5c1c7d697faca2a8c152b147865f6c2d1",
    "size": 1353038
+  },
+  {
+   "name": "s3",
+   "series": "1",
+   "version": "1.0.3",
+   "arch": "arm64",
+   "url": "https://github.com/KumaVolt/pack/releases/download/s3-1.0.3/s3-1.0.3-macos-arm64.tar.gz",
+   "sha256": "4851692cfd7670e7ad375b2be4a9d12a2c3884deaa6b954bc2d0fc25087015c3",
+   "size": 91287298
   },
   {
    "name": "typesense",
