@@ -802,7 +802,11 @@ async fn update(check: bool, name: Option<String>, series: Option<String>) -> an
 /// Replace the pack binary with the newest GitHub release of the Pack repo.
 async fn self_update() -> anyhow::Result<()> {
     let tag = download::latest_github_tag(packages::REPO).await?;
-    let latest = tag.trim_start_matches('v');
+    // Package builds are releases too; only v* tags are Pack itself.
+    let Some(latest) = tag.strip_prefix('v') else {
+        println!("No Pack release published yet (you have {}).", env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    };
     if packages::key(latest) <= packages::key(env!("CARGO_PKG_VERSION")) {
         println!("pack {} is the latest version.", env!("CARGO_PKG_VERSION"));
         return Ok(());
