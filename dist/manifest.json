@@ -1,5 +1,294 @@
 {
  "schema": 1,
- "generated": "",
- "packages": []
+ "generated": "2026-10-21T12:23:15+00:00",
+ "packages": [
+  {
+   "name": "caddy",
+   "series": "2",
+   "version": "2.11.7",
+   "arch": "arm64",
+   "url": "https://github.com/KumaVolt/pack/releases/download/caddy-2.11.7/caddy-2.11.7-macos-arm64.tar.gz",
+   "sha256": "d6d4ee13428f345cdf52c89c73db91aae2cfa7b096e6e48181e21101defe6e18",
+   "size": 16958465
+  },
+  {
+   "name": "caddy",
+   "series": "2",
+   "version": "2.11.7",
+   "arch": "x86_64",
+   "url": "https://github.com/KumaVolt/pack/releases/download/caddy-2.11.7/caddy-2.11.7-macos-x86_64.tar.gz",
+   "sha256": "29ce0a698ffa38611a18d7d330dbd51aca0db78043d74d032603963c31304446",
+   "size": 18294065
+  },
+  {
+   "name": "cloudflared",
+   "series": "stable",
+   "version": "2026.10.2",
+   "arch": "arm64",
+   "url": "https://github.com/KumaVolt/pack/releases/download/cloudflared-2026.10.2/cloudflared-2026.10.2-macos-arm64.tar.gz",
+   "sha256": "fa6b1f85b8e24ffc447eefefc4a8ade2d5a243cd119f061cf2f4b47b24324df2",
+   "size": 19812033
+  },
+  {
+   "name": "cloudflared",
+   "series": "stable",
+   "version": "2026.10.2",
+   "arch": "x86_64",
+   "url": "https://github.com/KumaVolt/pack/releases/download/cloudflared-2026.10.2/cloudflared-2026.10.2-macos-x86_64.tar.gz",
+   "sha256": "93dd631402aedd5871d5ac8dd7926dadb9c0fd253f27da90fde4eece2aa2c15b",
+   "size": 21780263
+  },
+  {
+   "name": "composer",
+   "series": "2",
+   "version": "2.10.3",
+   "arch": "any",
+   "url": "https://github.com/KumaVolt/pack/releases/download/composer-2.10.3/composer-2.10.3-macos-any.tar.gz",
+   "sha256": "8fa86ed98966f65bbd98c903d41947380b5ed08c65694f3a9f1d1a24aab11ec2",
+   "size": 831172
+  },
+  {
+   "name": "mail",
+   "series": "1",
+   "version": "1.31.6",
+   "arch": "arm64",
+   "url": "https://github.com/KumaVolt/pack/releases/download/mail-1.31.6/mail-1.31.6-macos-arm64.tar.gz",
+   "sha256": "293fdc1f2594f7a6b51f7f3c39476a6261d1acbf581220a84f7fb1fcbe3f56e1",
+   "size": 9969003
+  },
+  {
+   "name": "mail",
+   "series": "1",
+   "version": "1.31.6",
+   "arch": "x86_64",
+   "url": "https://github.com/KumaVolt/pack/releases/download/mail-1.31.6/mail-1.31.6-macos-x86_64.tar.gz",
+   "sha256": "ce641e316fd4e9907e397a642f9be7f1d4ce41570fdf8de1b23b3fd65c0f3711",
+   "size": 10569185
+  },
+  {
+   "name": "meilisearch",
+   "series": "1",
+   "version": "1.55.0",
+   "arch": "arm64",
+   "url": "https://github.com/KumaVolt/pack/releases/download/meilisearch-1.55.0/meilisearch-1.55.0-macos-arm64.tar.gz",
+   "sha256": "a33ea578919144c31690369d02a8f4f572555634b2c808166203b07b19f2bcc6",
+   "size": 92651288
+  },
+  {
+   "name": "meilisearch",
+   "series": "1",
+   "version": "1.55.0",
+   "arch": "x86_64",
+   "url": "https://github.com/KumaVolt/pack/releases/download/meilisearch-1.55.0/meilisearch-1.55.0-macos-x86_64.tar.gz",
+   "sha256": "316f274d549566a4189e47f8b2613e0694db55b4b2493522bff6190df9536a77",
+   "size": 91633381
+  },
+  {
+   "name": "mongodb",
+   "series": "8.0",
+   "version": "8.0.34",
+   "arch": "arm64",
+   "url": "https://github.com/KumaVolt/pack/releases/download/mongodb-8.0.34/mongodb-8.0.34-macos-arm64.tar.gz",
+   "sha256": "87139152ac88fd422a375c77d3a0e20645b442cc6a93dfdc6178e965d6561108",
+   "size": 81857533
+  },
+  {
+   "name": "mongodb",
+   "series": "8.0",
+   "version": "8.0.34",
+   "arch": "x86_64",
+   "url": "https://github.com/KumaVolt/pack/releases/download/mongodb-8.0.34/mongodb-8.0.34-macos-x86_64.tar.gz",
+   "sha256": "0101336c91761da7a0a8b2f163c954f3156d0ad5c8a7488b6401c9257eaf43eb",
+   "size": 88668442
+  },
+  {
+   "name": "mongodb",
+   "series": "7.0",
+   "version": "7.0.45",
+   "arch": "arm64",
+   "url": "https://github.com/KumaVolt/pack/releases/download/mongodb-7.0.45/mongodb-7.0.45-macos-arm64.tar.gz",
+   "sha256": "0d1fffa146f28d2b611f010baaca14a2aaaf9caf308aeba81532fa1090f2912a",
+   "size": 70814278
+  },
+  {
+   "name": "mongodb",
+   "series": "7.0",
+   "version": "7.0.45",
+   "arch": "x86_64",
+   "url": "https://github.com/KumaVolt/pack/releases/download/mongodb-7.0.45/mongodb-7.0.45-macos-x86_64.tar.gz",
+   "sha256": "fb49487e1e998923186f6a78fbd39e8a27ab57d000f92fbfdaae2a0693cc6df8",
+   "size": 76351458
+  },
+  {
+   "name": "mysql",
+   "series": "9.7",
+   "version": "9.7.4",
+   "arch": "arm64",
+   "url": "https://github.com/KumaVolt/pack/releases/download/mysql-9.7.4/mysql-9.7.4-macos-arm64.tar.gz",
+   "sha256": "1e764d251152fa5f93ace3fcc3239a7644f17cdd31eeb18cf73bd9aab64ea9ab",
+   "size": 129763392
+  },
+  {
+   "name": "mysql",
+   "series": "9.7",
+   "version": "9.7.4",
+   "arch": "x86_64",
+   "url": "https://github.com/KumaVolt/pack/releases/download/mysql-9.7.4/mysql-9.7.4-macos-x86_64.tar.gz",
+   "sha256": "4ee612c843dc6d4c8c094fcf5290fae75985531f84a8bb68fcc962af8c324664",
+   "size": 135608695
+  },
+  {
+   "name": "mysql",
+   "series": "8.4",
+   "version": "8.4.13",
+   "arch": "arm64",
+   "url": "https://github.com/KumaVolt/pack/releases/download/mysql-8.4.13/mysql-8.4.13-macos-arm64.tar.gz",
+   "sha256": "415f2030ad719b6f7565592e975cc676aa8e3e2c8a3c85308cc3c54cdbe20a67",
+   "size": 124280780
+  },
+  {
+   "name": "postgres",
+   "series": "18",
+   "version": "18.6.1",
+   "arch": "arm64",
+   "url": "https://github.com/KumaVolt/pack/releases/download/postgres-18.6.1/postgres-18.6.1-macos-arm64.tar.gz",
+   "sha256": "fcc4702c95932d0cb076cc90235c23b1da7014088ea89c792f85a8075da1e6f1",
+   "size": 87351149
+  },
+  {
+   "name": "postgres",
+   "series": "18",
+   "version": "18.6.1",
+   "arch": "x86_64",
+   "url": "https://github.com/KumaVolt/pack/releases/download/postgres-18.6.1/postgres-18.6.1-macos-x86_64.tar.gz",
+   "sha256": "d1d6018a4cd68470420ac1bc194a483b751857bb0a16eacd4d006244ae05ee75",
+   "size": 90653099
+  },
+  {
+   "name": "postgres",
+   "series": "17",
+   "version": "17.11.1",
+   "arch": "arm64",
+   "url": "https://github.com/KumaVolt/pack/releases/download/postgres-17.11.1/postgres-17.11.1-macos-arm64.tar.gz",
+   "sha256": "29570a8c2abd85284d08d899536734cf4430af22a49ff499f199738774b538b8",
+   "size": 88704071
+  },
+  {
+   "name": "postgres",
+   "series": "17",
+   "version": "17.11.1",
+   "arch": "x86_64",
+   "url": "https://github.com/KumaVolt/pack/releases/download/postgres-17.11.1/postgres-17.11.1-macos-x86_64.tar.gz",
+   "sha256": "b7a6af64c7534f749cf9d05b2823c01b939503a78dfcc1eebb6798b092124c30",
+   "size": 91949015
+  },
+  {
+   "name": "postgres",
+   "series": "16",
+   "version": "16.15.1",
+   "arch": "arm64",
+   "url": "https://github.com/KumaVolt/pack/releases/download/postgres-16.15.1/postgres-16.15.1-macos-arm64.tar.gz",
+   "sha256": "cd00cc382a4ab10bc6a5c572412f10f7baac9bdacbfdb58ed196c88f20cba062",
+   "size": 87640348
+  },
+  {
+   "name": "postgres",
+   "series": "16",
+   "version": "16.15.1",
+   "arch": "x86_64",
+   "url": "https://github.com/KumaVolt/pack/releases/download/postgres-16.15.1/postgres-16.15.1-macos-x86_64.tar.gz",
+   "sha256": "d17308a78349a30989b8f4e5a0a610df168a94252eaf778ad2b7b2c2cade855c",
+   "size": 90846902
+  },
+  {
+   "name": "postgres",
+   "series": "15",
+   "version": "15.19.1",
+   "arch": "arm64",
+   "url": "https://github.com/KumaVolt/pack/releases/download/postgres-15.19.1/postgres-15.19.1-macos-arm64.tar.gz",
+   "sha256": "3247709279d068fd8b630fd1355a5f9d55e66289aae506b442c2428576fd1ea9",
+   "size": 35629979
+  },
+  {
+   "name": "postgres",
+   "series": "15",
+   "version": "15.19.1",
+   "arch": "x86_64",
+   "url": "https://github.com/KumaVolt/pack/releases/download/postgres-15.19.1/postgres-15.19.1-macos-x86_64.tar.gz",
+   "sha256": "e821af10b1d605db8bc392598f1effa150144740744cb46ea14aee2618869c2a",
+   "size": 36289607
+  },
+  {
+   "name": "postgres",
+   "series": "14",
+   "version": "14.24.1",
+   "arch": "arm64",
+   "url": "https://github.com/KumaVolt/pack/releases/download/postgres-14.24.1/postgres-14.24.1-macos-arm64.tar.gz",
+   "sha256": "0759f2dee668963415977df519a882105580908acd08e1ad074046e58918e832",
+   "size": 26258929
+  },
+  {
+   "name": "postgres",
+   "series": "14",
+   "version": "14.24.1",
+   "arch": "x86_64",
+   "url": "https://github.com/KumaVolt/pack/releases/download/postgres-14.24.1/postgres-14.24.1-macos-x86_64.tar.gz",
+   "sha256": "f3cdda5bf575fa7c5955678def7905ee39370ba3a394dd127bada1f0e58db845",
+   "size": 26702997
+  },
+  {
+   "name": "redis",
+   "series": "9",
+   "version": "9.1.2",
+   "arch": "arm64",
+   "url": "https://github.com/KumaVolt/pack/releases/download/redis-9.1.2/redis-9.1.2-macos-arm64.tar.gz",
+   "sha256": "169207e33d3dd231b96f77901d8f56b10bdfc4c59cad41d767da7a94b45c484b",
+   "size": 1822156
+  },
+  {
+   "name": "redis",
+   "series": "9",
+   "version": "9.1.2",
+   "arch": "x86_64",
+   "url": "https://github.com/KumaVolt/pack/releases/download/redis-9.1.2/redis-9.1.2-macos-x86_64.tar.gz",
+   "sha256": "cd43745695e0b6f8b18e0f18157c143ef62686ad222d2e01a737bb9e7e9bff06",
+   "size": 2034462
+  },
+  {
+   "name": "redis",
+   "series": "8",
+   "version": "8.1.10",
+   "arch": "arm64",
+   "url": "https://github.com/KumaVolt/pack/releases/download/redis-8.1.10/redis-8.1.10-macos-arm64.tar.gz",
+   "sha256": "deb837ea94d5d0d2767bf09721e1bac75c4eefc6a6442f07b6bdb749c27a73d5",
+   "size": 1246790
+  },
+  {
+   "name": "redis",
+   "series": "8",
+   "version": "8.1.10",
+   "arch": "x86_64",
+   "url": "https://github.com/KumaVolt/pack/releases/download/redis-8.1.10/redis-8.1.10-macos-x86_64.tar.gz",
+   "sha256": "5dd2584431b6547f0e35fc471bb68bb5c1c7d697faca2a8c152b147865f6c2d1",
+   "size": 1353038
+  },
+  {
+   "name": "typesense",
+   "series": "30",
+   "version": "30.2",
+   "arch": "arm64",
+   "url": "https://github.com/KumaVolt/pack/releases/download/typesense-30.2/typesense-30.2-macos-arm64.tar.gz",
+   "sha256": "54feac0b9638d30cabf9efd44eb575e781ea91bd56ffeda53bbb3f207d4fdef3",
+   "size": 38481530
+  },
+  {
+   "name": "typesense",
+   "series": "30",
+   "version": "30.2",
+   "arch": "x86_64",
+   "url": "https://github.com/KumaVolt/pack/releases/download/typesense-30.2/typesense-30.2-macos-x86_64.tar.gz",
+   "sha256": "b7bc1e4d68446e675c104dbb1178a28b0161ca866fc4cde3f36a11da994f3e93",
+   "size": 40405554
+  }
+ ]
 }
