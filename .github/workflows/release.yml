@@ -1,0 +1,45 @@
+# Releases Pack itself when a v* tag is pushed: the `pack` CLI/daemon for
+# both Mac architectures (used by `pack self-update`) and the desktop app.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build
+        run: |
+          cargo build --release -p pack -p pack-app
+          version="${GITHUB_REF_NAME#v}"
+          mkdir -p out
+          tar -C target/release -czf "out/pack-$version-macos-${{ matrix.arch }}.tar.gz" pack
+          (cd out && shasum -a 256 "pack-$version-macos-${{ matrix.arch }}.tar.gz" > "pack-$version-macos-${{ matrix.arch }}.tar.gz.sha256")
+      - name: App bundle
+        run: |
+          cargo install tauri-cli --version "^2" --locked
+          (cd app && cargo tauri build --bundles app)
+          # The app starts the daemon from the binary next to its own executable.
+          cp target/release/pack target/release/bundle/macos/Pack.app/Contents/MacOS/pack
+          version="${GITHUB_REF_NAME#v}"
+          ditto -c -k --keepParent target/release/bundle/macos/Pack.app "out/Pack-$version-macos-${{ matrix.arch }}.zip"
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --title "Pack $GITHUB_REF_NAME" --generate-notes || sleep 5
+          gh release upload "$GITHUB_REF_NAME" out/* --clobber

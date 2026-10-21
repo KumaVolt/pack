@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pack</title>
+<style>
+:root {
+  --bg: #f6f5f2; --panel: #fff; --ink: #1c1b19; --muted: #77736b; --line: #e6e3dc;
+  --accent: #e8590c; --accent-soft: #fff0e6; --ok: #2f9e44; --warn: #e67700; --bad: #e03131;
+  --side: #efede8; --mono: ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #18171a; --panel: #212024; --ink: #ecebe8; --muted: #9a968e; --line: #312f34;
+    --accent: #ff7a2f; --accent-soft: #3a2518; --side: #1d1c1f; }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif; color: var(--ink); background: var(--bg); display: flex; }
+nav { width: 210px; flex: none; background: var(--side); border-right: 1px solid var(--line); padding: 18px 10px; display: flex; flex-direction: column; gap: 2px; }
+.brand { display: flex; align-items: center; gap: 10px; padding: 4px 10px 18px; font-weight: 700; font-size: 17px; letter-spacing: -.01em; }
+.brand .logo { width: 28px; height: 28px; border-radius: 8px; background: var(--accent); display: grid; place-items: center; color: #fff; font-size: 15px; }
+.brand small { font-weight: 500; color: var(--muted); font-size: 11px; display: block; }
+nav a { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 7px; color: var(--ink); text-decoration: none; cursor: pointer; }
+nav a:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+nav a.active { background: var(--panel); box-shadow: 0 1px 2px rgb(0 0 0 / .06); font-weight: 600; }
+nav a .count { margin-left: auto; font-size: 11px; background: var(--accent); color: #fff; border-radius: 9px; padding: 0 6px; }
+nav .spacer { flex: 1; }
+nav .foot { font-size: 11px; color: var(--muted); padding: 8px 10px; }
+main { flex: 1; overflow: auto; padding: 28px 34px 60px; }
+h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: -.02em; }
+.sub { color: var(--muted); margin: 0 0 22px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; margin-bottom: 14px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.row { display: flex; align-items: center; gap: 10px; }
+.row.between { justify-content: space-between; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+.dot.running { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 20%, transparent); }
+.dot.starting { background: var(--warn); }
+.dot.failed { background: var(--bad); }
+.muted { color: var(--muted); }
+.mono { font-family: var(--mono); font-size: 12.5px; }
+.tag { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 10px; background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--muted); }
+.tag.accent { background: var(--accent-soft); color: var(--accent); }
+button, .btn { font: inherit; font-size: 13px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); padding: 5px 12px; border-radius: 7px; cursor: pointer; text-decoration: none; white-space: nowrap; }
+button:hover, .btn:hover { border-color: color-mix(in srgb, var(--ink) 25%, transparent); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+button.danger { color: var(--bad); }
+button:disabled { opacity: .5; cursor: default; }
+input, select, textarea { font: inherit; font-size: 13px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: var(--ink); }
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; padding: 6px 10px; border-bottom: 1px solid var(--line); }
+td { padding: 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+tr:last-child td { border-bottom: 0; }
+td a { color: var(--accent); text-decoration: none; font-weight: 600; }
+.actions { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+pre.env { background: color-mix(in srgb, var(--ink) 4%, transparent); padding: 10px 12px; border-radius: 8px; margin: 10px 0 0; font: 12px/1.5 var(--mono); white-space: pre-wrap; }
+.banner { border-left: 3px solid var(--warn); }
+.banner.ok { border-left-color: var(--ok); }
+.dump { padding: 0; overflow: hidden; }
+.dump header { padding: 8px 14px; border-bottom: 1px solid var(--line); font-size: 12px; display: flex; gap: 10px; color: var(--muted); }
+.dump .body { padding: 6px 10px; overflow: auto; }
+.dump .body pre.sf-dump { margin: 0 !important; }
+.log { border-left: 3px solid var(--line); padding: 6px 12px; margin: 0 0 8px; }
+.log.ERROR, .log.CRITICAL, .log.ALERT, .log.EMERGENCY { border-left-color: var(--bad); }
+.log.WARNING { border-left-color: var(--warn); }
+.log.INFO, .log.DEBUG, .log.NOTICE { border-left-color: #4dabf7; }
+.log details pre { font: 11.5px/1.45 var(--mono); white-space: pre-wrap; max-height: 320px; overflow: auto; margin: 6px 0 0; }
+.syslog { font: 11.5px/1.45 var(--mono); white-space: pre-wrap; max-height: 70vh; overflow: auto; background: color-mix(in srgb, var(--ink) 4%, transparent); padding: 12px; border-radius: 8px; }
+.toast { position: fixed; bottom: 18px; right: 18px; background: var(--ink); color: var(--bg); padding: 10px 14px; border-radius: 9px; max-width: 460px; box-shadow: 0 6px 24px rgb(0 0 0 / .2); font-size: 13px; white-space: pre-wrap; }
+.toast.err { background: var(--bad); color: #fff; }
+.progress { height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; margin-top: 6px; }
+.progress div { height: 100%; background: var(--accent); }
+iframe.mail { width: 100%; height: calc(100vh - 140px); border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.empty { text-align: center; padding: 50px 20px; color: var(--muted); }
+.kinds { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
+.kind { cursor: pointer; }
+.kind:hover { border-color: var(--accent); }
+label.check { display: flex; gap: 8px; align-items: center; }
+</style>
+</head>
+<body>
+<nav>
+  <div class="brand"><div class="logo">▲</div><div>Pack<small>free local PHP dev</small></div></div>
+  <a data-page="overview">⌂ Overview</a>
+  <a data-page="sites">◎ Sites</a>
+  <a data-page="php">⟨⟩ PHP</a>
+  <a data-page="services">▤ Services</a>
+  <a data-page="mail">✉ Mail</a>
+  <a data-page="dumps">⌁ Dumps <span class="count" id="dump-count" hidden></span></a>
+  <a data-page="logs">≡ Logs</a>
+  <a data-page="settings">⚙ Settings</a>
+  <div class="spacer"></div>
+  <div class="foot" id="foot"></div>
+</nav>
+<main id="main"></main>
+<div id="toast" class="toast" hidden></div>
+<script>
+const $ = (s, el = document) => el.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let page = location.hash.slice(1) || 'overview';
+let state = { status: null, sites: null, php: null, services: null, dumps: [], lastDump: 0, seenDumps: 0, logSite: null, logFile: null, sysLog: null };
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, { method: opts.method || 'GET', headers: { 'Content-Type': 'application/json' }, body: opts.body ? JSON.stringify(opts.body) : undefined });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+const post = (p, b = {}) => api(p, { method: 'POST', body: b });
+
+function toast(msg, err = false) {
+  const t = $('#toast'); t.textContent = msg; t.className = 'toast' + (err ? ' err' : ''); t.hidden = false;
+  clearTimeout(t._h); t._h = setTimeout(() => t.hidden = true, err ? 7000 : 3000);
+}
+async function act(fn, done) {
+  try { const r = await fn(); if (done) toast(typeof done === 'function' ? done(r) : done); await refresh(); return r; }
+  catch (e) { toast(e.message, true); }
+}
+const st = s => (s && s.state) || 'stopped';
+const dot = s => `<span class="dot ${st(s)}" title="${esc(st(s))}${s && s.detail ? ': ' + esc(s.detail) : ''}"></span>`;
+
+async function refresh() {
+  try {
+    const needs = { overview: ['status', 'sites', 'services', 'packages'], sites: ['sites', 'php'], php: ['php', 'status', 'packages'], services: ['services', 'status', 'packages'], mail: ['services'], settings: ['status'], logs: ['sites'] }[page] || [];
+    const loaders = { status: '/api/status', sites: '/api/sites', php: '/api/php', services: '/api/services', packages: '/api/packages' };
+    await Promise.all(['status', ...needs].filter((v, i, a) => a.indexOf(v) === i).map(async k => state[k] = await api(loaders[k])));
+    $('#foot').textContent = `v${state.status.version} · API :7171`;
+  } catch (e) { $('#main').innerHTML = `<div class="empty">Can't reach the Pack daemon.<br><span class="mono">pack daemon</span></div>`; return; }
+  render();
+}
+
+function render() {
+  document.querySelectorAll('nav a').forEach(a => a.classList.toggle('active', a.dataset.page === page));
+  const fn = pages[page] || pages.overview;
+  const html = fn();
+  if (html !== null) $('#main').innerHTML = html;
+  // VarDumper's HTML carries <script> tags that innerHTML won't run.
+  if (page === 'dumps') document.querySelectorAll('.dump .body script').forEach(old => {
+    const s = document.createElement('script'); s.textContent = old.textContent; old.replaceWith(s);
+  });
+}
+
+function jobsBar() {
+  const s = state.status; if (!s) return '';
+  const running = s.jobs.filter(j => j.state === 'running');
+  const failed = s.jobs.filter(j => j.state === 'failed');
+  let out = '';
+  for (const d of s.downloads) {
+    const pct = d.total ? Math.round(d.done / d.total * 100) : 0;
+    out += `<div class="card"><div class="row between"><b>${esc(d.label)}</b><span class="muted">${(d.done / 1e6).toFixed(0)}${d.total ? ' / ' + (d.total / 1e6).toFixed(0) : ''} MB</span></div><div class="progress"><div style="width:${pct}%"></div></div></div>`;
+  }
+  if (!s.downloads.length) for (const j of running) out += `<div class="card"><div class="row"><span class="dot starting"></span>${esc(j.label)}…</div></div>`;
+  for (const j of failed.slice(-2)) out += `<div class="card banner" style="border-left-color:var(--bad)"><b>${esc(j.label)} failed</b><pre class="env">${esc(j.error)}</pre></div>`;
+  return out;
+}
+
+const pages = {
+  overview() {
+    const s = state.status, sites = state.sites?.sites || [], svc = state.services?.instances || [];
+    const setupNeeded = !s.caddy.installed || !s.dns.resolver || !s.ca_trusted || !s.php.every(p => p.installed);
+    const pk = state.packages, updates = pk ? pk.installed.filter(p => p.update) : [];
+    return `<h1>Overview</h1><p class="sub">Everything Herd Pro does, free and open source.</p>
+    ${jobsBar()}
+    ${setupNeeded ? `<div class="card banner"><div class="row between"><div><b>Finish setting up Pack</b><div class="muted">Installs the web server, PHP ${esc(s.default_php)}, Composer, MySQL, PostgreSQL, Redis and Mail, then asks once for your password to route <b>.${esc(s.tld)}</b> domains and trust HTTPS.</div></div><button class="primary" onclick="setup(this)">Set up</button></div></div>` : ''}
+    ${updates.length ? `<div class="card banner ok"><div class="row between"><div><b>${updates.length} update${updates.length > 1 ? 's' : ''} available</b><div class="muted">${updates.map(u => `${esc(u.name)} ${esc(u.version)} → ${esc(u.latest)}`).join(' · ')}</div></div><button class="primary" onclick="act(()=>post('/api/packages/update',{}),'Updating…')">Update all</button></div></div>` : ''}
+    <div class="grid">
+      <div class="card"><div class="row">${dot(s.caddy.status)}<b>Web server</b></div><div class="muted">Caddy ${s.caddy.installed ? '' : '(not installed)'}</div></div>
+      <div class="card"><div class="row"><span class="dot ${s.dns.resolver ? 'running' : 'failed'}"></span><b>.${esc(s.tld)} domains</b></div><div class="muted">${s.dns.resolver ? 'DNS on port ' + s.dns.port : 'resolver not installed'}</div></div>
+      <div class="card"><div class="row"><span class="dot ${s.ca_trusted ? 'running' : 'starting'}"></span><b>HTTPS</b></div><div class="muted">${s.ca_trusted ? 'local CA trusted' : 'local CA not trusted yet'}</div></div>
+      ${s.php.map(p => `<div class="card"><div class="row">${dot(p.status)}<b>PHP ${esc(p.version)}</b>${p.version === s.default_php ? '<span class="tag accent">default</span>' : ''}</div><div class="muted">${p.installed ? 'FPM pool' : 'not installed'}</div></div>`).join('')}
+    </div>
+    <div class="card"><div class="row between"><b>Sites</b><a class="btn" onclick="go('sites')">${sites.length} sites →</a></div>
+      ${sites.slice(0, 6).map(x => `<div class="row" style="margin-top:8px">${x.secured ? '🔒' : '<span style="width:16px"></span>'}<a href="${esc(x.url)}" target="_blank" style="color:var(--accent);text-decoration:none;font-weight:600">${esc(x.host)}</a><span class="tag">${esc(x.framework)}</span></div>`).join('') || '<div class="muted" style="margin-top:6px">No sites yet — park a folder or link a project.</div>'}
+    </div>
+    <div class="card"><div class="row between"><b>Services</b><a class="btn" onclick="go('services')">Manage →</a></div>
+      ${svc.map(i => `<div class="row" style="margin-top:8px">${dot(i.status)}<b>${esc(i.name)}</b><span class="muted mono">:${i.port}</span></div>`).join('') || '<div class="muted" style="margin-top:6px">No services. MySQL, Postgres, Redis, Meilisearch, Mail, S3 and more are one click away.</div>'}
+    </div>`;
+  },
+
+  sites() {
+    const d = state.sites, versions = (state.php?.installed || []).map(p => p.version);
+    return `<h1>Sites</h1><p class="sub">Folders in parked directories are served as <b>&lt;folder&gt;.${esc(d.tld)}</b>.</p>
+    <div class="card"><div class="row between"><div><b>Parked directories</b><div class="muted mono">${d.paths.map(esc).join(' · ') || 'none'}</div></div>
+      <div class="row"><input id="park-path" placeholder="~/Code" style="width:200px"><button onclick="act(()=>post('/api/sites/park',{path:$('#park-path').value}),'Parked')">Park</button></div></div></div>
+    <div class="card"><div class="row" style="flex-wrap:wrap">
+      <b style="margin-right:auto">Add site</b>
+      <input id="link-path" placeholder="/path/to/project" style="width:230px"><input id="link-name" placeholder="name (optional)" style="width:140px">
+      <button onclick="act(()=>post('/api/sites/link',{path:$('#link-path').value,name:$('#link-name').value||null}),r=>'Linked '+r.site.url)">Link</button>
+      <span class="muted">or proxy</span><input id="proxy-name" placeholder="name" style="width:100px"><input id="proxy-up" placeholder="127.0.0.1:3000" style="width:130px">
+      <button onclick="act(()=>post('/api/sites/proxy',{name:$('#proxy-name').value,upstream:$('#proxy-up').value}),'Proxy added')">Proxy</button>
+    </div></div>
+    <div class="card" style="padding:4px 8px"><table><tr><th>Site</th><th>PHP</th><th>Path</th><th></th></tr>
+    ${d.sites.map(x => `<tr>
+      <td>${x.secured ? '🔒 ' : ''}<a href="${esc(x.url)}" target="_blank">${esc(x.host)}</a> <span class="tag">${esc(x.framework)}</span>${x.shared ? `<div class="mono"><a href="${esc(x.shared)}" target="_blank">${esc(x.shared)}</a></div>` : ''}</td>
+      <td>${x.proxy ? '—' : `<select onchange="act(()=>post('/api/sites/isolate',{name:'${esc(x.name)}',php:this.value||null}),'PHP updated')">
+        <option value="">default (${esc(state.status.default_php)})</option>${versions.map(v => `<option ${x.isolated && x.php === v ? 'selected' : ''}>${v}</option>`).join('')}</select>`}</td>
+      <td class="mono muted">${esc(x.proxy ? '→ ' + x.proxy : x.path_display)}</td>
+      <td><div class="actions">
+        <button onclick="act(()=>post('/api/sites/secure',{name:'${esc(x.name)}',secure:${!x.secured}}),'${x.secured ? 'Unsecured' : 'Secured'}')">${x.secured ? 'Unsecure' : 'Secure'}</button>
+        ${x.shared ? `<button onclick="act(()=>post('/api/sites/unshare',{name:'${esc(x.name)}'}),'Stopped sharing')">Stop sharing</button>` : `<button onclick="share('${esc(x.name)}',this)">Share</button>`}
+        ${x.kind === 'parked' ? '' : `<button class="danger" onclick="act(()=>post('/api/sites/unlink',{name:'${esc(x.name)}'}),'Removed')">Remove</button>`}
+        ${x.proxy ? '' : `<button onclick="state.logSite='${esc(x.name)}';go('logs')">Logs</button>`}
+      </div></td></tr>`).join('') || '<tr><td colspan="4" class="empty">No sites yet.</td></tr>'}
+    </table></div>`;
+  },
+
+  php() {
+    const d = state.php;
+    const avail = Object.entries(d.available).sort((a, b) => parseFloat(b[0]) - parseFloat(a[0]));
+    return `<h1>PHP</h1><p class="sub">Static PHP builds from the Pack repo, each with ${d.extensions.split(',').length} extensions (intl, opcache, sodium, redis, pdo_*…). Every version runs its own FPM pool. Use <span class="mono">php</span>, <span class="mono">php84</span>, <span class="mono">composer</span> and <span class="mono">laravel</span> in your terminal.</p>
+    ${jobsBar()}
+    <div class="card" style="padding:4px 8px"><table><tr><th>Version</th><th>Installed</th><th>Status</th><th></th></tr>
+    ${avail.map(([v, latest]) => { const p = d.installed.find(i => i.version === v); const upd = p && cmpV(latest, p.patch) > 0 && !p.patch.endsWith('-local'); return `<tr>
+      <td><b>PHP ${v}</b> ${v === d.default ? '<span class="tag accent">default</span>' : ''}</td>
+      <td class="muted">${p ? esc(p.patch) + (upd ? ` <span class="tag accent">${esc(latest)} available</span>` : '') : esc(latest) + ' available'}</td>
+      <td>${p ? dot(p.status) : ''}</td>
+      <td><div class="actions">${p ? `${upd ? `<button class="primary" onclick="act(()=>post('/api/packages/update',{name:'php',series:'${v}'}),'Updating PHP ${v}…')">Update</button>` : ''}${v !== d.default ? `<button onclick="act(()=>post('/api/php/default',{version:'${v}'}),'Default PHP is now ${v}')">Make default</button><button class="danger" onclick="act(()=>post('/api/php/uninstall',{version:'${v}'}),'Removed')">Remove</button>` : ''}`
+        : `<button class="primary" onclick="act(()=>post('/api/php/install',{version:'${v}'}),'Installing PHP ${v}…')">Install</button>`}</div></td></tr>`; }).join('') || '<tr><td colspan="4" class="empty">The package manifest is not reachable.</td></tr>'}
+    </table></div>
+    <div class="card"><b>Extensions</b><div class="muted mono" style="margin-top:6px">${esc(d.extensions.split(',').join(' '))}</div></div>`;
+  },
+
+  services() {
+    const d = state.services;
+    return `<h1>Services</h1><p class="sub">Databases, caches, search, mail and storage — all free, open-source binaries.</p>
+    ${jobsBar()}
+    ${d.instances.map(i => `<div class="card"><div class="row between">
+      <div class="row">${dot(i.status)}<b>${esc(i.name)}</b>${seriesSelect(i)}<span class="tag">${esc(i.installed_version || 'not installed')}</span>${svcUpdate(i)}<span class="muted mono">127.0.0.1:${i.port}</span>
+        ${i.ui_port ? `<a class="btn" href="http://127.0.0.1:${i.ui_port}${i.kind === 's3' ? '/rustfs/console/' : ''}" target="_blank">Open dashboard</a>` : ''}</div>
+      <div class="actions">
+        ${i.kind === 'mysql' || i.kind === 'postgres' ? `<button onclick="createDb('${esc(i.id)}')">New database</button>` : ''}
+        ${st(i.status) === 'running' || st(i.status) === 'starting' ? `<button onclick="act(()=>post('/api/services/${esc(i.id)}/stop'),'Stopped')">Stop</button>` : `<button class="primary" onclick="act(()=>post('/api/services/${esc(i.id)}/start'),'Starting')">Start</button>`}
+        <button class="danger" onclick="removeService('${esc(i.id)}')">Remove</button></div></div>
+      ${st(i.status) === 'failed' ? `<pre class="env" style="color:var(--bad)">${esc(i.status.detail)}</pre>` : ''}
+      <details><summary class="muted" style="cursor:pointer;margin-top:8px">.env for Laravel</summary><pre class="env">${esc(i.env)}</pre></details></div>`).join('')}
+    <h3 style="margin-top:26px">Add a service</h3>
+    <div class="kinds">${d.kinds.map(k => `<div class="card kind" onclick="addService('${k.id}')"><div class="row between"><b>${esc(k.name)}</b><span class="tag">${esc(k.license)}</span></div><div class="muted">${esc(k.description)}</div><div class="muted mono" style="margin-top:4px">:${k.port}${(d.series[k.id] || []).length ? ' · ' + d.series[k.id].map(x => x[0]).join(', ') : ''}</div></div>`).join('')}</div>`;
+  },
+
+  mail() {
+    const mail = state.services.instances.find(i => i.kind === 'mail');
+    if (!mail) return `<h1>Mail</h1><p class="sub">Catch every email your apps send.</p><div class="card empty">Mail isn't set up yet.<br><br><button class="primary" onclick="act(()=>post('/api/services',{kind:'mail'}),'Installing Mailpit…')">Enable Mail</button></div>`;
+    if (st(mail.status) !== 'running') return `<h1>Mail</h1><div class="card empty">Mail is ${esc(st(mail.status))}. <button onclick="act(()=>post('/api/services/${mail.id}/start'),'Starting')">Start</button></div>`;
+    if ($('iframe.mail')) return null;
+    return `<div class="row between" style="margin-bottom:12px"><div><h1>Mail</h1><span class="muted">SMTP on <span class="mono">127.0.0.1:${mail.port}</span> — set <span class="mono">MAIL_PORT=${mail.port}</span></span></div><a class="btn" href="http://127.0.0.1:${mail.ui_port}" target="_blank">Open in browser</a></div>
+    <iframe class="mail" src="http://127.0.0.1:${mail.ui_port}"></iframe>`;
+  },
+
+  dumps() {
+    state.seenDumps = state.lastDump; updateDumpCount();
+    const list = [...state.dumps].reverse();
+    return `<div class="row between"><div><h1>Dumps</h1><p class="sub">Every <span class="mono">dump()</span> and <span class="mono">dd()</span> from your sites lands here.</p></div><button onclick="clearDumps()">Clear</button></div>
+    ${list.map(d => `<div class="card dump"><header><b>${esc(d.site || 'cli')}</b><span>${esc(d.request || '')}</span><span class="mono" style="margin-left:auto">${esc(shortPath(d.file))}${d.line ? ':' + d.line : ''}</span><span>${new Date(d.time).toLocaleTimeString()}</span></header><div class="body">${d.html}</div></div>`).join('') || '<div class="card empty">No dumps yet. Call <span class="mono">dump($anything)</span> in a site.</div>'}`;
+  },
+
+  logs() {
+    const sites = (state.sites?.sites || []).filter(s => !s.proxy);
+    if (!state.logSite && sites.length) state.logSite = sites[0].name;
+    loadLogs();
+    return `<h1>Logs</h1><p class="sub">Laravel logs per site, plus Pack's own process logs.</p>
+    <div class="row" style="margin-bottom:12px"><select id="log-site" onchange="state.logSite=this.value;state.logFile=null;render()">${sites.map(s => `<option ${s.name === state.logSite ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}<option value="__system" ${state.logSite === '__system' ? 'selected' : ''}>— Pack system logs —</option></select>
+    <span id="log-files"></span><button onclick="render()">Refresh</button></div><div id="log-body"><div class="muted">Loading…</div></div>`;
+  },
+
+  settings() {
+    api('/api/settings').then(c => {
+      $('#set-dumps').checked = c.dumps; $('#set-lan').checked = c.lan_access; $('#set-auto').checked = c.auto_update;
+      for (const k of ['memory_limit', 'upload_max_filesize', 'post_max_size', 'max_execution_time']) $('#ini-' + k).value = c.php_ini[k];
+      $('#set-home').textContent = state.status.home;
+    });
+    if ($('#set-dumps')) return null;
+    return `<h1>Settings</h1><p class="sub">Stored in <span class="mono" id="set-home"></span>/config.json</p>
+    <div class="card"><label class="check"><input type="checkbox" id="set-dumps" onchange="act(()=>post('/api/settings',{dumps:this.checked}),'Saved')"> Send <span class="mono">dump()</span> output to Pack instead of the page</label>
+    <label class="check" style="margin-top:8px"><input type="checkbox" id="set-lan" onchange="act(()=>post('/api/settings',{lan_access:this.checked}),'Saved')"> Allow other devices on my network to open my sites</label>
+    <label class="check" style="margin-top:8px"><input type="checkbox" id="set-auto" onchange="act(()=>post('/api/settings',{auto_update:this.checked}),'Saved')"> Install updates automatically (patch releases within the same version line)</label></div>
+    <div class="card"><b>php.ini</b><div class="grid" style="margin-top:10px">
+      ${['memory_limit', 'upload_max_filesize', 'post_max_size', 'max_execution_time'].map(k => `<label><div class="muted mono">${k}</div><input id="ini-${k}" style="width:100%"></label>`).join('')}</div>
+      <div style="margin-top:12px"><button class="primary" onclick="saveIni()">Save & restart PHP</button></div></div>
+    <div class="card row between"><div><b>Restart everything</b><div class="muted">Restarts Caddy, PHP-FPM and all services.</div></div><button onclick="act(()=>post('/api/restart'),'Restarted')">Restart</button></div>`;
+  },
+};
+
+function shortPath(p) { if (!p) return ''; const parts = p.split('/'); return parts.slice(-3).join('/'); }
+function go(p) { page = p; location.hash = p; $('#main').innerHTML = ''; refresh(); }
+async function setup(btn) { btn.disabled = true; btn.textContent = 'Setting up…'; await act(() => post('/api/setup'), 'Pack is ready'); }
+async function share(name, btn) { btn.disabled = true; btn.textContent = 'Starting tunnel…'; await act(() => post('/api/sites/share', { name }), r => 'Shared at ' + r.url); }
+async function createDb(id) { const name = prompt('Database name', 'laravel'); if (name) act(() => post(`/api/services/${id}/databases`, { name }), `Created ${name}`); }
+async function removeService(id) { if (!confirm(`Remove ${id}? Its data is kept unless you also delete it.`)) return; const data = confirm('Also delete its data?'); act(() => api(`/api/services/${id}?data=${data}`, { method: 'DELETE' }), 'Removed'); }
+function cmpV(a, b) { const x = String(a).match(/\d+/g) || [], y = String(b).match(/\d+/g) || []; for (let i = 0; i < Math.max(x.length, y.length); i++) { const d = (+x[i] || 0) - (+y[i] || 0); if (d) return d; } return 0; }
+function seriesSelect(i) {
+  const lines = (state.services.series[i.kind] || []).map(x => x[0]);
+  if (lines.length < 2) return '';
+  return `<select title="Version line" onchange="switchSeries('${esc(i.id)}', this)">${lines.map(l => `<option ${l === i.series ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
+}
+function svcUpdate(i) {
+  const line = (state.services.series[i.kind] || []).find(x => x[0] === i.series);
+  if (!line || !i.installed_version || cmpV(line[1], i.installed_version) <= 0) return '';
+  return `<button class="primary" onclick="act(()=>post('/api/packages/update',{name:'${esc(i.kind)}',series:'${esc(i.series)}'}),'Updating ${esc(i.name)}…')">Update to ${esc(line[1])}</button>`;
+}
+async function switchSeries(id, sel) {
+  if (!confirm(`Switch ${id} to ${sel.value}? Its data is kept and upgraded in place.`)) { render(); return; }
+  act(() => post(`/api/services/${id}/version`, { version: sel.value }), `Switching ${id} to ${sel.value}…`);
+}
+async function addService(kind) {
+  const k = state.services.kinds.find(x => x.id === kind); let body = { kind };
+  const lines = (state.services.series[kind] || []).map(x => x[0]);
+  if (lines.length > 1) { const v = prompt(`${k.name} version (${lines.join(', ')})`, lines[0]); if (!v) return; body.version = v; }
+  const port = prompt(`${k.name} port (empty = first free from ${k.port})`, ''); if (port === null) return; if (port) body.port = parseInt(port, 10);
+  if (kind === 'reverb') { const path = prompt('Laravel project path'); if (!path) return; body.path = path; }
+  act(() => post('/api/services', body), `Installing ${k.name}…`);
+}
+async function saveIni() {
+  const php_ini = {}; for (const k of ['memory_limit', 'upload_max_filesize', 'post_max_size']) php_ini[k] = $('#ini-' + k).value;
+  php_ini.max_execution_time = parseInt($('#ini-max_execution_time').value || '0', 10);
+  act(() => post('/api/settings', { php_ini }), 'Saved — PHP restarted');
+}
+async function clearDumps() { await api('/api/dumps', { method: 'DELETE' }); state.dumps = []; render(); }
+function updateDumpCount() { const n = state.dumps.filter(d => d.id > state.seenDumps).length; const c = $('#dump-count'); c.hidden = !n; c.textContent = n; }
+
+async function loadLogs() {
+  const body = () => $('#log-body');
+  try {
+    if (state.logSite === '__system') {
+      const d = await api('/api/logs/system' + (state.sysLog ? '?name=' + encodeURIComponent(state.sysLog) : ''));
+      $('#log-files').innerHTML = `<select onchange="state.sysLog=this.value;render()"><option value="">choose…</option>${d.files.map(f => `<option ${f === state.sysLog ? 'selected' : ''}>${esc(f)}</option>`).join('')}</select>`;
+      body().innerHTML = state.sysLog ? `<div class="syslog">${esc(d.text) || 'empty'}</div>` : '';
+      return;
+    }
+    if (!state.logSite) { body().innerHTML = '<div class="card empty">No sites.</div>'; return; }
+    const d = await api(`/api/logs?site=${encodeURIComponent(state.logSite)}${state.logFile ? '&file=' + encodeURIComponent(state.logFile) : ''}`);
+    $('#log-files').innerHTML = d.files.length > 1 ? `<select onchange="state.logFile=this.value;render()">${d.files.map(f => `<option ${f === d.file ? 'selected' : ''}>${esc(f)}</option>`).join('')}</select>` : `<span class="muted mono">${esc(d.file || 'no log files')}</span>`;
+    body().innerHTML = d.entries.map(e => `<div class="card log ${esc(e.level)}"><div class="row"><span class="tag">${esc(e.level)}</span><span class="muted mono">${esc(e.time)}</span></div><div style="margin-top:4px">${esc(e.message)}</div>${e.context ? `<details><summary class="muted">stack / context</summary><pre>${esc(e.context)}</pre></details>` : ''}</div>`).join('') || '<div class="card empty">Nothing logged yet.</div>';
+  } catch (e) { body().innerHTML = `<div class="card empty">${esc(e.message)}</div>`; }
+}
+
+async function pollDumps() {
+  try {
+    const d = await api('/api/dumps?since=' + state.lastDump);
+    if (d.dumps.length) {
+      state.dumps.push(...d.dumps); state.dumps = state.dumps.slice(-300);
+      state.lastDump = d.dumps[d.dumps.length - 1].id;
+      if (page === 'dumps') render(); else updateDumpCount();
+    }
+  } catch {}
+}
+
+document.querySelectorAll('nav a').forEach(a => a.onclick = () => go(a.dataset.page));
+window.onhashchange = () => { const p = location.hash.slice(1); if (p && p !== page) go(p); };
+(async () => {
+  try { const d = await api('/api/dumps'); state.dumps = d.dumps; state.lastDump = state.seenDumps = d.dumps.length ? d.dumps[d.dumps.length - 1].id : 0; } catch {}
+  await refresh();
+  setInterval(() => { if (page === 'overview' || (state.status && (state.status.jobs.some(j => j.state === 'running')))) refresh(); }, 2000);
+  setInterval(pollDumps, 1000);
+})();
+</script>
+</body>
+</html>

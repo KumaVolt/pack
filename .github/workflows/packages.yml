@@ -1,0 +1,104 @@
+# Builds every binary Pack installs and publishes it as a release asset of
+# this repo, then records it (with SHA-256) in dist/manifest.json. Pack
+# installs and updates exclusively from that manifest.
+#
+# Runs daily to pick up new upstream versions (PHP patch releases, MySQL,
+# Postgres, Valkey, ...). Trigger manually to (re)build specific packages.
+name: Packages
+
+on:
+  schedule:
+    - cron: "23 5 * * *"
+  workflow_dispatch:
+    inputs:
+      only:
+        description: "Comma-separated packages to check (empty = all): php,mysql,postgres,redis,meilisearch,typesense,mail,s3,mongodb,caddy,cloudflared,composer"
+        required: false
+        default: ""
+      force:
+        description: "Rebuild even if the version is already published"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: packages
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      count: ${{ steps.plan.outputs.count }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: plan
+        env:
+          ONLY: ${{ inputs.only }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          args=()
+          [ -n "$ONLY" ] && args+=(--only "$ONLY")
+          [ "$FORCE" = "true" ] && args+=(--force)
+          matrix=$(python3 scripts/packages.py plan --manifest dist/manifest.json "${args[@]}")
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "count=$(echo "$matrix" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["include"]))')" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: plan
+    if: needs.plan.outputs.count != '0'
+    strategy:
+      fail-fast: false
+      max-parallel: 12
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    name: ${{ matrix.name }} ${{ matrix.version }} (${{ matrix.arch }})
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        env:
+          # static-php-cli resolves some sources through the GitHub API.
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/packages.py build "${{ matrix.name }}" "${{ matrix.series }}" "${{ matrix.arch }}" --version "${{ matrix.version }}" --out out
+      - name: Publish release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${{ matrix.name }}-${{ matrix.version }}"
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" --title "$tag" --latest=false \
+              --notes "Pack package: ${{ matrix.name }} ${{ matrix.version }}. Installed by Pack via dist/manifest.json." \
+              || sleep 5
+          fi
+          for i in 1 2 3; do gh release upload "$tag" out/*.tar.gz --clobber && break; sleep 10; done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: meta-${{ matrix.name }}-${{ matrix.version }}-${{ matrix.arch }}
+          path: out/*.json
+
+  manifest:
+    needs: [plan, build]
+    if: always() && needs.plan.outputs.count != '0'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: meta-*
+          path: meta
+          merge-multiple: true
+      - name: Update dist/manifest.json
+        run: |
+          python3 scripts/packages.py merge --manifest dist/manifest.json --dir meta \
+            --base-url "https://github.com/${{ github.repository }}/releases/download"
+      - name: Commit
+        run: |
+          git config user.name "pack-bot"
+          git config user.email "pack-bot@users.noreply.github.com"
+          git add dist/manifest.json
+          git diff --cached --quiet && exit 0
+          git commit -m "packages: update manifest"
+          for i in 1 2 3; do git pull --rebase && git push && break; sleep 5; done

@@ -1,0 +1,4 @@
+target/
+.playwright-mcp/
+docs/screenshots/app-raw.png
+dist/out/
