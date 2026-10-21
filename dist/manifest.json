@@ -1,6 +1,6 @@
 {
  "schema": 1,
- "generated": "2026-10-21T12:49:38+00:00",
+ "generated": "2026-10-21T13:11:44+00:00",
  "packages": [
   {
    "name": "caddy",
@@ -163,6 +163,15 @@
    "url": "https://github.com/KumaVolt/pack/releases/download/php-8.5.11/php-8.5.11-macos-arm64.tar.gz",
    "sha256": "d97534ee0ccf130ca99dc11e9cc4f1cf5b75e580e0c09d06eb3c420139e94a4d",
    "size": 51874827
+  },
+  {
+   "name": "php",
+   "series": "8.5",
+   "version": "8.5.11",
+   "arch": "x86_64",
+   "url": "https://github.com/KumaVolt/pack/releases/download/php-8.5.11/php-8.5.11-macos-x86_64.tar.gz",
+   "sha256": "bc50b007d4b0a0c7847c66a37936a8080a8dd11ae39dd92e02441f3232f7f6fb",
+   "size": 51794482
   },
   {
    "name": "php",
