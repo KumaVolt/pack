@@ -139,7 +139,7 @@ pub fn write_config(version: &str, cfg: &Config) -> anyhow::Result<()> {
         ["/etc/ssl/certs/ca-certificates.crt", "/etc/pki/tls/certs/ca-bundle.crt", "/etc/ssl/cert.pem"]
             .iter()
             .find(|p| std::path::Path::new(p).exists())
-            .map(|p| format!("openssl.cafile = {p}\ncurl.cainfo = {p}\n"))
+            .map(|p| format!("openssl.cafile = \"{p}\"\ncurl.cainfo = \"{p}\"\n"))
             .unwrap_or_default()
     };
     std::fs::write(
@@ -224,7 +224,7 @@ pub fn pool_specs(version: &str, cfg: &Config) -> Vec<Spec> {
                 ];
                 if cfg.dumps {
                     args.push("-d".into());
-                    args.push(format!("auto_prepend_file={}", platform::slash(&paths::tools().join("dumps.php"))));
+                    args.push(format!("auto_prepend_file=\"{}\"", platform::slash(&paths::tools().join("dumps.php"))));
                 }
                 Spec { name: format!("php-{version}-{i}"), program: fpm(version), args, env: env.clone(), cwd: None, log: log.clone() }
             })
