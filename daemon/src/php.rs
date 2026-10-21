@@ -99,7 +99,7 @@ pub async fn install(version: &str) -> anyhow::Result<String> {
 /// Use PHP binaries you built yourself (a dir with `php` and `php-fpm`) for a
 /// series. They become version `<patch>-local`.
 pub fn import(version: &str, from: &std::path::Path) -> anyhow::Result<()> {
-    let probe = std::process::Command::new(from.join("php")).args(["-r", "echo PHP_VERSION;"]).output()
+    let probe = std::process::Command::new(from.join(platform::exe("php"))).args(["-r", "echo PHP_VERSION;"]).output()
         .with_context(|| format!("no php binary in {}", from.display()))?;
     let patch = String::from_utf8_lossy(&probe.stdout).to_string();
     if !patch.starts_with(&format!("{version}.")) {
@@ -109,17 +109,15 @@ pub fn import(version: &str, from: &std::path::Path) -> anyhow::Result<()> {
     let dir = packages::series_dir("php", version);
     let target = dir.join(&name);
     std::fs::create_dir_all(&target)?;
-    for bin in ["php", "php-fpm"] {
+    let bins = if cfg!(windows) { ["php.exe", "php-cgi.exe"] } else { ["php", "php-fpm"] };
+    for bin in bins {
         let dest = target.join(bin);
         let _ = std::fs::remove_file(&dest);
         std::fs::copy(from.join(bin), &dest).with_context(|| format!("{bin} not found in {}", from.display()))?;
         download::make_executable(&dest)?;
     }
     std::fs::write(target.join(".pack-package"), format!("{{\"name\":\"php\",\"version\":\"{name}\"}}"))?;
-    let link = packages::current("php", version);
-    let _ = std::fs::remove_file(&link);
-    std::os::unix::fs::symlink(&name, link)?;
-    Ok(())
+    packages::set_current("php", version, &name)
 }
 
 /// Write php.ini, conf.d and php-fpm.conf for a version.

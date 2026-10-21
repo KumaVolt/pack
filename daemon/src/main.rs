@@ -284,11 +284,16 @@ async fn daemon() -> anyhow::Result<()> {
     let shutdown_app = app.clone();
     axum::serve(listener, api::router(app))
         .with_graceful_shutdown(async move {
-            let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).unwrap();
-            tokio::select! {
-                _ = tokio::signal::ctrl_c() => {}
-                _ = term.recv() => {}
+            #[cfg(unix)]
+            {
+                let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).unwrap();
+                tokio::select! {
+                    _ = tokio::signal::ctrl_c() => {}
+                    _ = term.recv() => {}
+                }
             }
+            #[cfg(windows)]
+            let _ = tokio::signal::ctrl_c().await;
             shutdown_app.sup.stop_all().await;
         })
         .await?;

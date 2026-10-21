@@ -17,7 +17,7 @@ use std::time::{Duration, SystemTime};
 
 /// The GitHub repo that publishes Pack and its packages.
 pub const REPO: &str = "KumaVolt/pack";
-pub const DEFAULT_MANIFEST: &str = "https://raw.githubusercontent.com/KumaVolt/pack/main/dist/manifest.json";
+pub const DEFAULT_MANIFEST: &str = "https://github.com/KumaVolt/pack/releases/download/manifest/manifest.json";
 const MAX_AGE: Duration = Duration::from_secs(6 * 3600);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

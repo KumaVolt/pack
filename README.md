@@ -48,7 +48,7 @@ Run `pack --help` for everything.
 
 One small program (`pack`) runs in the background. It serves sites through [Caddy](https://caddyserver.com), runs a PHP-FPM pool per PHP version (php-cgi on Windows), and answers DNS for `.test`. It also keeps your services running.
 
-Everything Pack installs is a prebuilt, checksummed package from this repository's releases, listed in [`dist/manifest.json`](dist/manifest.json). A daily workflow rebuilds them when new versions come out. All data lives in one folder, so removing that folder removes everything:
+Everything Pack installs is a prebuilt, checksummed package from this repository's releases, listed in a [manifest](https://github.com/KumaVolt/pack/releases/tag/manifest). A daily workflow rebuilds them when new versions come out. All data lives in one folder, so removing that folder removes everything:
 
 | System  | Data folder |
 |---------|-------------|

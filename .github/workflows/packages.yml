@@ -1,6 +1,7 @@
 # Builds every binary Pack installs and publishes it as a release asset of
-# this repo, then records it (with SHA-256) in dist/manifest.json. Pack
-# installs and updates exclusively from that manifest.
+# this repo, then records it (with SHA-256) in manifest.json, published as
+# the asset of the `manifest` release. Pack installs and updates exclusively
+# from that manifest. Nothing is committed to the repo.
 #
 # Runs daily to pick up new upstream versions (PHP patch releases, MySQL,
 # Postgres, Valkey, ...). Trigger manually to (re)build specific packages.
@@ -44,7 +45,10 @@ jobs:
           ONLY: ${{ inputs.only }}
           TARGETS: ${{ inputs.targets }}
           FORCE: ${{ inputs.force }}
+          GH_TOKEN: ${{ github.token }}
         run: |
+          gh release download manifest -p manifest.json -O dist/manifest.json --clobber 2>/dev/null \
+            || { mkdir -p dist; [ -f dist/manifest.json ] || echo '{"schema": 1, "packages": []}' > dist/manifest.json; }
           args=()
           [ -n "$ONLY" ] && args+=(--only "$ONLY")
           [ -n "$TARGETS" ] && args+=(--targets "$TARGETS")
@@ -102,15 +106,14 @@ jobs:
           pattern: meta-*
           path: meta
           merge-multiple: true
-      - name: Update dist/manifest.json
+      - name: Update and publish manifest.json
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          gh release download manifest -p manifest.json -O dist/manifest.json --clobber 2>/dev/null \
+            || { mkdir -p dist; [ -f dist/manifest.json ] || echo '{"schema": 1, "packages": []}' > dist/manifest.json; }
           python3 scripts/packages.py merge --manifest dist/manifest.json --dir meta \
             --base-url "https://github.com/${{ github.repository }}/releases/download"
-      - name: Commit
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add dist/manifest.json
-          git diff --cached --quiet && exit 0
-          git commit -m "packages: update manifest"
-          for i in 1 2 3; do git pull --rebase && git push && break; sleep 5; done
+          gh release view manifest >/dev/null 2>&1 || gh release create manifest --title "Package manifest" --latest=false \
+            --notes "The list of packages Pack installs (versions, download URLs, SHA-256). Updated by the Packages workflow."
+          gh release upload manifest dist/manifest.json --clobber
