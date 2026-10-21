@@ -53,7 +53,12 @@ pub async fn ensure_composer() -> anyhow::Result<()> {
 
 /// The pack binary the shims call.
 fn pack_exe() -> PathBuf {
-    std::env::current_exe().ok().and_then(|e| e.canonicalize().ok()).unwrap_or_else(|| PathBuf::from("pack"))
+    let exe = std::env::current_exe().ok().and_then(|e| e.canonicalize().ok()).unwrap_or_else(|| PathBuf::from("pack"));
+    // Windows canonical paths are `\\?\C:\...`, which cmd.exe can't run.
+    match exe.to_str().and_then(|s| s.strip_prefix(r"\\?\")) {
+        Some(plain) => PathBuf::from(plain),
+        None => exe,
+    }
 }
 
 fn command_line(program: &Path, args: &[String]) -> String {
