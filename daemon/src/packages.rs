@@ -112,7 +112,18 @@ fn read_cache() -> anyhow::Result<Manifest> {
 }
 
 fn is_local(s: &str) -> bool {
-    s.starts_with('/') || s.starts_with("file://")
+    s.starts_with("file://") || std::path::Path::new(s).is_absolute()
+}
+
+/// `preferred` if this machine has it, else the newest series it does have
+/// (e.g. Redis 8 on Windows, where 9 doesn't exist). Uses the cached manifest.
+pub fn series_or_newest(name: &str, preferred: &str) -> String {
+    let available = read_cache().map(|m| m.series(name)).unwrap_or_default();
+    if available.is_empty() || available.iter().any(|s| s == preferred) {
+        preferred.to_string()
+    } else {
+        available[0].clone()
+    }
 }
 fn local_path(s: &str) -> &str {
     s.strip_prefix("file://").unwrap_or(s)

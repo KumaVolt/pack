@@ -215,7 +215,7 @@ impl App {
         let inst = ServiceInstance {
             id,
             kind: kind.id.into(),
-            version: series.unwrap_or_else(|| kind.default_series.to_string()),
+            version: series.unwrap_or_else(|| packages::series_or_newest(kind.id, kind.default_series)),
             port,
             autostart: true,
             options,
