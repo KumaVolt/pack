@@ -22,7 +22,7 @@ EOF
 cleanup() {
   curl -s -m 5 -X POST -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:7171/api/shutdown >/dev/null || true
   sleep 2
-  echo "--- daemon log"; tail -n 40 "$PACK_HOME/logs/daemon.log" 2>/dev/null || true
+  for log in "$PACK_HOME"/logs/*.log; do echo "--- $(basename "$log")"; tail -n 40 "$log"; done 2>/dev/null || true
 }
 trap cleanup EXIT
 
