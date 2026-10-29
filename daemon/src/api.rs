@@ -154,7 +154,8 @@ async fn list_sites(State(app): State<Shared>) -> R {
             v
         })
         .collect();
-    Ok(Json(json!({ "sites": list, "paths": cfg.paths, "tld": cfg.tld })))
+    let paths_display: Vec<String> = cfg.paths.iter().map(|p| paths::tilde(p)).collect();
+    Ok(Json(json!({ "sites": list, "paths": cfg.paths, "paths_display": paths_display, "tld": cfg.tld })))
 }
 
 #[derive(Deserialize)]

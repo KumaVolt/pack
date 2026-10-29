@@ -202,7 +202,7 @@ const pages = {
   sites() {
     const d = state.sites, versions = (state.php?.installed || []).map(p => p.version);
     return `<h1>Sites</h1><p class="sub">Folders in parked directories are served as <b>&lt;folder&gt;.${esc(d.tld)}</b>.</p>
-    <div class="card"><div class="row between"><div><b>Parked directories</b><div class="muted mono">${d.paths.map(esc).join(' · ') || 'none'}</div></div>
+    <div class="card"><div class="row between"><div><b>Parked directories</b><div class="muted mono">${d.paths_display.map(esc).join(' · ') || 'none'}</div></div>
       <div class="row"><input id="park-path" placeholder="~/Code" style="width:200px"><button onclick="act(()=>post('/api/sites/park',{path:$('#park-path').value}),'Parked')">Park</button></div></div></div>
     <div class="card"><div class="row" style="flex-wrap:wrap">
       <b style="margin-right:auto">Add site</b>
