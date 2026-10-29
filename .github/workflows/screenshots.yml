@@ -1,12 +1,12 @@
 # Retakes the README screenshots (docs/screenshots) with scripts/screenshots.sh
-# whenever the UI changes, and commits them if they look different. On pull
+# whenever the app or daemon changes, and commits them if they look different. On pull
 # requests it only uploads them, so UI changes can be looked at before merging.
 name: Screenshots
 
 on:
   push:
     branches: [main]
-    paths: &ui ["daemon/**", "scripts/screenshots.*", ".github/workflows/screenshots.yml"]
+    paths: &ui ["daemon/**", "app/**", "scripts/screenshots.sh", ".github/workflows/screenshots.yml"]
   pull_request:
     paths: *ui
   workflow_dispatch:
@@ -29,14 +29,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - name: Install Playwright
-        run: |
-          pip install playwright
-          playwright install chromium
       - name: Build
-        run: cargo build --release -p pack
+        run: |
+          cargo build --release -p pack
+          cargo build --release -p pack-app --features screenshots
+      # The app renders each page offscreen, so no screen recording permission is needed.
       - name: Take screenshots
-        run: scripts/screenshots.sh target/release/pack docs/screenshots
+        run: scripts/screenshots.sh target/release/pack target/release/pack-app docs/screenshots
       - uses: actions/upload-artifact@v4
         with:
           name: screenshots
