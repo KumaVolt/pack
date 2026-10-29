@@ -107,19 +107,29 @@ pub async fn extract(archive: &Path, into: &Path, strip_components: usize) -> an
         let file = std::fs::File::open(&archive).with_context(|| format!("opening {}", archive.display()))?;
         let mut tar = tar::Archive::new(flate2::read::GzDecoder::new(std::io::BufReader::new(file)));
         tar.set_preserve_permissions(true);
-        for entry in tar.entries()? {
-            let mut entry = entry?;
-            let path = entry.path()?.into_owned();
+        let relative = |path: &Path| -> anyhow::Result<Option<std::path::PathBuf>> {
             let rel: std::path::PathBuf = path.components().skip(strip_components).collect();
-            if rel.as_os_str().is_empty() {
-                continue;
-            }
             if rel.components().any(|c| matches!(c, std::path::Component::ParentDir | std::path::Component::RootDir | std::path::Component::Prefix(_))) {
                 bail!("unsafe path in {}: {}", archive.display(), path.display());
             }
+            Ok((!rel.as_os_str().is_empty()).then_some(rel))
+        };
+        for entry in tar.entries()? {
+            let mut entry = entry?;
+            let Some(rel) = relative(&entry.path()?)? else { continue };
             let dest = into.join(&rel);
             if let Some(parent) = dest.parent() {
                 std::fs::create_dir_all(parent)?;
+            }
+            // A hard link names another entry by its path in the archive; `unpack`
+            // would resolve that against the current directory, not `into`.
+            if entry.header().entry_type().is_hard_link() {
+                let target = entry.link_name()?.map(|p| p.into_owned()).unwrap_or_default();
+                let Some(target) = relative(&target)? else { bail!("bad hard link in {}: {}", archive.display(), rel.display()) };
+                let _ = std::fs::remove_file(&dest);
+                std::fs::hard_link(into.join(&target), &dest)
+                    .with_context(|| format!("unpacking {} (hard link to {})", rel.display(), target.display()))?;
+                continue;
             }
             entry.unpack(&dest).with_context(|| format!("unpacking {}", rel.display()))?;
         }
