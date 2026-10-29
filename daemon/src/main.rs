@@ -1,6 +1,6 @@
 //! Pack — a free, open-source local PHP development environment for macOS.
 //! `pack daemon` runs the background service (web server, DNS, PHP, services,
-//! dashboard API); every other subcommand is a thin client for it.
+//! desktop app API); every other subcommand is a thin client for it.
 
 mod api;
 mod app;
