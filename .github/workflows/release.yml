@@ -17,11 +17,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { runner: macos-15,         triple: aarch64-apple-darwin,      target: macos-arm64,    bundles: "app,dmg" }
-          - { runner: macos-15-intel,   triple: x86_64-apple-darwin,       target: macos-x86_64,   bundles: "app,dmg" }
-          - { runner: ubuntu-22.04,     triple: x86_64-unknown-linux-gnu,  target: linux-x86_64,   bundles: "deb,appimage" }
-          - { runner: ubuntu-22.04-arm, triple: aarch64-unknown-linux-gnu, target: linux-arm64,    bundles: "deb,appimage" }
-          - { runner: windows-latest,   triple: x86_64-pc-windows-msvc,    target: windows-x86_64, bundles: "nsis,msi" }
+          - { runner: macos-15,         triple: aarch64-apple-darwin,      target: macos-arm64,    formats: "app,dmg" }
+          - { runner: macos-15-intel,   triple: x86_64-apple-darwin,       target: macos-x86_64,   formats: "app,dmg" }
+          - { runner: ubuntu-22.04,     triple: x86_64-unknown-linux-gnu,  target: linux-x86_64,   formats: "deb,appimage" }
+          - { runner: ubuntu-22.04-arm, triple: aarch64-unknown-linux-gnu, target: linux-arm64,    formats: "deb,appimage" }
+          - { runner: windows-latest,   triple: x86_64-pc-windows-msvc,    target: windows-x86_64, formats: "nsis,wix" }
     runs-on: ${{ matrix.runner }}
     name: ${{ matrix.target }}
     defaults:
@@ -33,14 +33,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
         with:
-          tool: tauri-cli
+          tool: cargo-packager
       - name: Linux build dependencies
         if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+        run: sudo scripts/linux-deps.sh
       - name: Build app
-        run: scripts/build-app.sh --target "${{ matrix.triple }}" --bundles "${{ matrix.bundles }}"
+        run: scripts/build-app.sh --target "${{ matrix.triple }}" --formats "${{ matrix.formats }}"
       - name: Collect
         run: |
           version="${GITHUB_REF_NAME#v}"
@@ -51,11 +49,11 @@ jobs:
           asset="pack-$version-${{ matrix.target }}.tar.gz"
           tar -C "$rel" -czf "out/$asset" "pack$ext"
           (cd out && (sha256sum "$asset" 2>/dev/null || shasum -a 256 "$asset") > "$asset.sha256")
-          b="$rel/bundle"
+          p="target/${{ matrix.triple }}/packager"
           case "${{ runner.os }}" in
-            macOS)   cp "$b"/dmg/*.dmg out/ ;;
-            Linux)   cp "$b"/deb/*.deb "$b"/appimage/*.AppImage out/ ;;
-            Windows) cp "$b"/nsis/*.exe "$b"/msi/*.msi out/ ;;
+            macOS)   cp "$p"/*.dmg out/ ;;
+            Linux)   cp "$p"/*.deb "$p"/*.AppImage out/ ;;
+            Windows) cp "$p"/*.exe "$p"/*.msi out/ ;;
           esac
           ls -la out
       - uses: actions/upload-artifact@v4

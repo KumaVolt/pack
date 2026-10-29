@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
 # Takes the README screenshots: sets up Pack with demo sites, services, dumps
 # and mail in a throwaway home (like smoke.sh: own PACK_HOME, ports 8080/8443,
-# no DNS/certificate/PATH changes), then captures the app with
-# scripts/screenshots.py (needs `pip install playwright` and
-# `playwright install chromium`).
+# no DNS/certificate/PATH changes), then has the desktop app render its pages
+# offscreen in light and dark (`pack-app --screenshots`, which needs
+# `cargo build -p pack-app --features screenshots`).
 #
-# Usage: scripts/screenshots.sh path/to/pack [out-dir, default docs/screenshots]
+# Usage: scripts/screenshots.sh path/to/pack path/to/pack-app [out-dir, default docs/screenshots]
 set -euo pipefail
 
-pack=$(cd "$(dirname "$1")" && pwd)/$(basename "$1")
-out=${2:-docs/screenshots}
+abs() { echo "$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"; }
+pack=$(abs "$1")
+app=$(abs "$2")
+out=${3:-docs/screenshots}
 mkdir -p "$out"
-here=$(cd "$(dirname "$0")" && pwd)
 export PACK_HOME=$(mktemp -d)
 # Pack shows site paths relative to the home folder, so give it a clean one: ~/Code/shop.
 demo=$(mktemp -d)
@@ -110,5 +111,5 @@ EOF
 down=$(curl -s http://127.0.0.1:7171/api/services | "$py" -c "import json,sys; print(' '.join(i['id'] for i in json.load(sys.stdin)['instances'] if (i['status'] or {}).get('state') != 'running'))")
 [ -z "$down" ] || { echo "Not running: $down"; exit 1; }
 
-"$py" "$here/screenshots.py" "$out"
+"$app" --screenshots "$out" overview sites services dumps mail
 echo "SCREENSHOTS OK"

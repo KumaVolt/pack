@@ -62,7 +62,7 @@ Run `pack --help` for everything.
 
 ## How it works
 
-One small program (`pack`) runs in the background. It serves sites through [Caddy](https://caddyserver.com), runs a PHP-FPM pool per PHP version (php-cgi on Windows), and answers DNS for `.test`. It also keeps your services running.
+One small program (`pack`) runs in the background. The desktop app is a native [GPUI](https://www.gpui.rs) window (built with [GPUI Component](https://github.com/longbridge/gpui-component)) and a menu bar / tray icon that talk to it. The daemon serves sites through [Caddy](https://caddyserver.com), runs a PHP-FPM pool per PHP version (php-cgi on Windows), and answers DNS for `.test`. It also keeps your services running.
 
 Everything Pack installs is a prebuilt, checksummed package from this repository's releases, listed in a [manifest](https://github.com/KumaVolt/pack/releases/tag/manifest). A daily workflow rebuilds them when new versions come out. All data lives in one folder, so removing that folder removes everything:
 
@@ -76,12 +76,16 @@ Everything Pack installs is a prebuilt, checksummed package from this repository
 
 ```sh
 cargo run -p pack -- daemon       # run the daemon in the foreground
-scripts/build-app.sh              # build the desktop app for this machine
+cargo run -p pack-app             # run the desktop app (starts the daemon if needed)
+scripts/build-app.sh              # build the app and its installers for this machine (needs cargo-packager)
 scripts/smoke.sh target/release/pack   # end-to-end test in a throwaway home
-scripts/screenshots.sh target/release/pack   # retake the README screenshots (needs Playwright)
+cargo build --release -p pack-app --features screenshots
+scripts/screenshots.sh target/release/pack target/release/pack-app   # retake the README screenshots
 ```
 
-The screenshots are retaken by `.github/workflows/screenshots.yml` whenever the UI changes.
+On Linux, `sudo scripts/linux-deps.sh` installs the libraries the app needs to build.
+
+The screenshots are retaken by `.github/workflows/screenshots.yml` whenever the app or daemon changes. `pack-app --screenshots <dir>` renders each page offscreen, and only once its data is there: the Services page waits until every service is running.
 
 The packages are built by `scripts/packages.py` (see `.github/workflows/packages.yml`).
 
