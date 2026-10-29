@@ -1,5 +1,5 @@
 # Builds pack on every OS and runs scripts/smoke.sh: installs the web server,
-# PHP, MySQL and Redis from the manifest and serves a real site over HTTPS.
+# PHP, MySQL, PostgreSQL and Redis from the manifest and serves a real site over HTTPS.
 # Also builds the desktop app on every OS.
 name: CI
 
@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [macos-15, macos-15-intel, ubuntu-22.04, ubuntu-22.04-arm, windows-latest]
+        runner: [macos-15, macos-15-intel, ubuntu-22.04, ubuntu-22.04-arm, ubuntu-24.04, ubuntu-24.04-arm, windows-latest]
     runs-on: ${{ matrix.runner }}
     defaults:
       run:
@@ -29,6 +29,20 @@ jobs:
         run: cargo test -p pack
       - name: Build
         run: cargo build --release -p pack
+      # TEMPORARY (drop before merge): test this branch's MySQL and PostgreSQL packages, not the published ones.
+      - name: Build this branch's MySQL and PostgreSQL packages
+        if: startsWith(matrix.runner, 'ubuntu-')
+        run: |
+          arch=$([ "$(uname -m)" = aarch64 ] && echo arm64 || echo x86_64)
+          python3 scripts/packages.py build mysql 8.4 "linux-$arch" --version 8.4.13 --out "$RUNNER_TEMP/pkgs"
+          python3 scripts/packages.py build postgres 18 "linux-$arch" --version 18.6.1 --out "$RUNNER_TEMP/pkgs"
+          curl -fsSL https://github.com/KumaVolt/pack/releases/download/manifest/manifest.json -o "$RUNNER_TEMP/manifest.json"
+          python3 scripts/packages.py merge --manifest "$RUNNER_TEMP/manifest.json" --dir "$RUNNER_TEMP/pkgs"
+          echo "PACK_MANIFEST=$RUNNER_TEMP/manifest.json" >> "$GITHUB_ENV"
+          ldconfig -p | grep -E 'libaio|libnuma' || echo "no system libaio/libnuma"
+          mkdir "$RUNNER_TEMP/x" && tar -xzf "$RUNNER_TEMP"/pkgs/mysql-*.tar.gz -C "$RUNNER_TEMP/x" bin/mysqld lib/private
+          ldd "$RUNNER_TEMP/x/bin/mysqld" | grep -E 'libaio|libnuma'
+          ! ldd "$RUNNER_TEMP/x/bin/mysqld" | grep 'not found'
       - name: Smoke test
         run: scripts/smoke.sh target/release/pack
 

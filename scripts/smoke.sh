@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # End-to-end check of a pack binary on this machine, without touching the
 # system: own PACK_HOME, ports 8080/8443, no DNS/certificate/PATH changes.
-# Installs the web server, PHP, MySQL and Redis from the manifest, serves a
-# site that talks to both, and checks it over HTTP and HTTPS.
+# Installs the web server, PHP, MySQL, PostgreSQL and Redis from the manifest,
+# serves a site that talks to all three, and checks it over HTTP and HTTPS.
 #
 # Usage: scripts/smoke.sh path/to/pack
 set -euo pipefail
@@ -22,28 +22,36 @@ EOF
 cleanup() {
   curl -s -m 5 -X POST -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:7171/api/shutdown >/dev/null || true
   sleep 2
-  echo "--- daemon log"; tail -n 40 "$PACK_HOME/logs/daemon.log" 2>/dev/null || true
+  for log in "$PACK_HOME"/logs/*.log; do echo "--- $(basename "$log")"; tail -n 40 "$log"; done 2>/dev/null || true
 }
 trap cleanup EXIT
 
 "$pack" install --no-agent --no-system --minimal
+# PostgreSQL refuses to run with administrator rights, which Windows CI
+# runners have (normal UAC sessions don't), so skip it there.
+pg=yes
+case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) net session >/dev/null 2>&1 && pg= && echo "Skipping PostgreSQL: running as Windows administrator";; esac
+
 "$pack" service add mysql
+[ -n "$pg" ] && "$pack" service add postgres
 "$pack" service add redis
 
 port() { curl -s http://127.0.0.1:7171/api/services | "$py" -c "import json,sys; print(next(i['port'] for i in json.load(sys.stdin)['instances'] if i['kind']=='$1'))"; }
 mysql_port=$(port mysql)
+pg_port=$([ -n "$pg" ] && port postgres || true)
 redis_port=$(port redis)
-echo "mysql :$mysql_port  redis :$redis_port"
+echo "mysql :$mysql_port  postgres :$pg_port  redis :$redis_port"
 
 mkdir -p "$work/hello/public"
 cat > "$work/hello/public/index.php" <<EOF
 <?php
 \$db = new PDO('mysql:host=127.0.0.1;port=$mysql_port', 'root', '');
 \$mysql = \$db->query('select version()')->fetchColumn();
+\$pg = '$pg_port' === '' ? 'skipped' : (new PDO('pgsql:host=127.0.0.1;port=$pg_port;dbname=postgres', 'root', ''))->query('show server_version')->fetchColumn();
 \$r = fsockopen('127.0.0.1', $redis_port);
 fwrite(\$r, "PING\r\n");
 \$redis = trim(fgets(\$r));
-echo 'php=' . PHP_VERSION . ' mysql=' . \$mysql . ' redis=' . \$redis . ' ext=' . (extension_loaded('redis') ? 'redis' : 'none');
+echo 'php=' . PHP_VERSION . ' mysql=' . \$mysql . ' pg=' . \$pg . ' redis=' . \$redis . ' ext=' . (extension_loaded('redis') ? 'redis' : 'none');
 EOF
 (cd "$work/hello" && "$pack" link hello)
 sleep 2
@@ -54,6 +62,7 @@ echo "https: $out"
 echo "$out" | grep -q "php=8.4" || { echo "PHP did not answer over HTTPS"; exit 1; }
 echo "$out" | grep -q "redis=+PONG" || { echo "Redis check failed"; exit 1; }
 echo "$out" | grep -q "mysql=[0-9]" || { echo "MySQL check failed"; exit 1; }
+[ -z "$pg" ] || echo "$out" | grep -q "pg=[0-9]" || { echo "PostgreSQL check failed"; exit 1; }
 code=$(curl -s -o /dev/null -w '%{http_code}' -m 10 --resolve "hello.test:8080:127.0.0.1" http://hello.test:8080/)
 echo "http: $code (expect a redirect to https)"
 [ "$code" = 308 ] || [ "$code" = 301 ] || [ "$code" = 302 ] || { echo "HTTP did not redirect"; exit 1; }
