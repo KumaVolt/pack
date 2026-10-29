@@ -20,8 +20,8 @@ concurrency:
 
 jobs:
   screenshots:
-    # Same as the CI smoke test; Pack's MySQL needs libaio.so.1, which 24.04 renamed.
-    runs-on: ubuntu-22.04
+    # macOS: every service runs there, and the app looks the way most people see it.
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -32,8 +32,7 @@ jobs:
       - name: Install Playwright
         run: |
           pip install playwright
-          playwright install --with-deps chromium
-          sudo apt-get install -y fonts-inter
+          playwright install chromium
       - name: Build
         run: cargo build --release -p pack
       - name: Take screenshots
