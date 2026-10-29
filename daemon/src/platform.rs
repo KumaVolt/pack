@@ -630,6 +630,19 @@ pub fn terminate(pid: u32) -> bool {
     }
 }
 
+/// Does PostgreSQL see this process as an administrator? Only on Windows, and
+/// only when elevated (or with UAC off): then it has to run restricted.
+pub fn is_admin() -> bool {
+    #[cfg(windows)]
+    {
+        crate::restricted::is_admin()
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
+}
+
 /// Replace the current process with `cmd` (Unix) or run it and exit with its
 /// status (Windows, which has no exec).
 pub fn exec(mut cmd: Command) -> ! {

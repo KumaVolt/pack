@@ -2398,6 +2398,7 @@ dependencies = [
  "sha2",
  "tar",
  "tokio",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

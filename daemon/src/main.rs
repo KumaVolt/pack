@@ -13,6 +13,8 @@ mod paths;
 mod packages;
 mod php;
 mod platform;
+#[cfg(windows)]
+mod restricted;
 mod services;
 mod sites;
 mod supervisor;
@@ -124,6 +126,13 @@ enum Cmd {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
     },
+    /// Run a program without administrator rights (Windows; how PostgreSQL is started when Pack is elevated)
+    #[command(hide = true)]
+    RunRestricted {
+        program: PathBuf,
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
     /// Print the PHP binary for the current directory (used by the php shim)
     WhichPhp {
         /// Print the version directory instead of the binary
@@ -217,6 +226,16 @@ fn main() {
         let mut cmd = std::process::Command::new(php::cli(&version));
         cmd.arg("-c").arg(dir.join("php.ini")).args(args).env("PHP_INI_SCAN_DIR", php::scan_dir(&version));
         platform::exec(cmd);
+    }
+    if let Cmd::RunRestricted { program, args } = &cli.cmd {
+        #[cfg(windows)]
+        restricted::run(program, args);
+        #[cfg(not(windows))]
+        platform::exec({
+            let mut cmd = std::process::Command::new(program);
+            cmd.args(args);
+            cmd
+        });
     }
     let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
     if let Err(e) = rt.block_on(run(cli.cmd)) {
@@ -424,7 +443,7 @@ async fn wait_for_jobs() -> anyhow::Result<bool> {
 async fn run(cmd: Cmd) -> anyhow::Result<()> {
     match cmd {
         Cmd::Daemon => daemon().await?,
-        Cmd::WhichPhp { .. } | Cmd::ExecPhp { .. } => unreachable!(),
+        Cmd::WhichPhp { .. } | Cmd::ExecPhp { .. } | Cmd::RunRestricted { .. } => unreachable!(),
         Cmd::Install { no_agent, minimal, no_system } => install(no_agent, minimal, no_system).await?,
         Cmd::Update { check, name, series } => update(check, name, series).await?,
         Cmd::SelfUpdate => self_update().await?,
