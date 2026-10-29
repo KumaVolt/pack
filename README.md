@@ -4,6 +4,22 @@ A free, open-source local PHP development environment for macOS, Windows and Lin
 
 Put a project in a folder and it's live at `https://<folder>.test`: HTTPS, PHP, databases and mail included, nothing to configure.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/overview-dark.png">
+  <img alt="Pack overview: web server, .test domains, HTTPS, PHP versions, sites and services" src="docs/screenshots/overview.png">
+</picture>
+
+<table>
+  <tr>
+    <td><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/sites-dark.png"><img alt="Sites with HTTPS and PHP version per site" src="docs/screenshots/sites.png"></picture></td>
+    <td><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/services-dark.png"><img alt="Services: MySQL, PostgreSQL, Redis, Meilisearch and Mail" src="docs/screenshots/services.png"></picture></td>
+  </tr>
+  <tr>
+    <td><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dumps-dark.png"><img alt="dump() output from a site" src="docs/screenshots/dumps.png"></picture></td>
+    <td><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/mail-dark.png"><img alt="Local mail inbox" src="docs/screenshots/mail.png"></picture></td>
+  </tr>
+</table>
+
 - **Sites:** every folder becomes `https://<name>.test` with a trusted certificate. You can turn HTTPS off per site.
 - **PHP:** versions 8.2 to 8.5 side by side, picked per site. Composer and the Laravel installer are included.
 - **Services:** MySQL, PostgreSQL, Redis, Meilisearch, Typesense (search for Laravel Scout), MongoDB, S3 storage, Reverb. Each starts with one click, and switching versions keeps your data.
@@ -62,7 +78,10 @@ Everything Pack installs is a prebuilt, checksummed package from this repository
 cargo run -p pack -- daemon       # run the daemon in the foreground
 scripts/build-app.sh              # build the desktop app for this machine
 scripts/smoke.sh target/release/pack   # end-to-end test in a throwaway home
+scripts/screenshots.sh target/release/pack   # retake the README screenshots (needs Playwright)
 ```
+
+The screenshots are retaken by `.github/workflows/screenshots.yml` whenever the UI changes.
 
 The packages are built by `scripts/packages.py` (see `.github/workflows/packages.yml`).
 

@@ -1,0 +1,48 @@
+# Retakes the README screenshots (docs/screenshots) with scripts/screenshots.sh
+# whenever the UI changes, and commits them if they look different.
+name: Screenshots
+
+on:
+  push:
+    branches: [main]
+    paths: ["daemon/**", "scripts/screenshots.*", ".github/workflows/screenshots.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: screenshots
+  cancel-in-progress: true
+
+jobs:
+  screenshots:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install Playwright
+        run: |
+          pip install playwright
+          playwright install --with-deps chromium
+          sudo apt-get install -y fonts-inter
+      - name: Build
+        run: cargo build --release -p pack
+      - name: Take screenshots
+        run: scripts/screenshots.sh target/release/pack docs/screenshots
+      - uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: docs/screenshots
+      - name: Commit
+        run: |
+          git add docs/screenshots
+          if git diff --cached --quiet; then echo "No changes"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Update README screenshots"
+          git push
