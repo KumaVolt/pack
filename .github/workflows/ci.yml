@@ -39,7 +39,7 @@ jobs:
           python3 scripts/packages.py merge --manifest "$RUNNER_TEMP/manifest.json" --dir "$RUNNER_TEMP/pkgs"
           echo "PACK_MANIFEST=$RUNNER_TEMP/manifest.json" >> "$GITHUB_ENV"
           ldconfig -p | grep -E 'libaio|libnuma' || echo "no system libaio/libnuma"
-          mkdir "$RUNNER_TEMP/x" && tar -xzf "$RUNNER_TEMP"/pkgs/mysql-*.tar.gz -C "$RUNNER_TEMP/x" ./bin/mysqld ./lib/private
+          mkdir "$RUNNER_TEMP/x" && tar -xzf "$RUNNER_TEMP"/pkgs/mysql-*.tar.gz -C "$RUNNER_TEMP/x" bin/mysqld lib/private
           ldd "$RUNNER_TEMP/x/bin/mysqld" | grep -E 'libaio|libnuma'
           ! ldd "$RUNNER_TEMP/x/bin/mysqld" | grep 'not found'
       - name: Smoke test
