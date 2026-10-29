@@ -164,16 +164,21 @@ pub fn spec(cfg: &Config, inst: &ServiceInstance) -> anyhow::Result<Spec> {
             .chain(cfg!(unix).then(|| format!("--socket={}", paths::run().join(format!("{}.sock", inst.id)).display())))
             .collect(),
         ),
-        "postgres" => (
-            exe_in(&bin, "bin/postgres"),
-            {
-                let mut a = vec!["-D".to_string(), d, "-p".into(), port, "-h".into(), "127.0.0.1".into()];
-                if cfg!(unix) {
-                    a.extend(["-k".to_string(), paths::run().display().to_string()]);
-                }
-                a
-            },
-        ),
+        "postgres" => {
+            let postgres = exe_in(&bin, "bin/postgres");
+            let mut a = vec!["-D".to_string(), d, "-p".into(), port, "-h".into(), "127.0.0.1".into()];
+            if cfg!(unix) {
+                a.extend(["-k".to_string(), paths::run().display().to_string()]);
+            }
+            // PostgreSQL won't run as a Windows administrator: start it through
+            // `pack run-restricted`, which drops admin rights like pg_ctl does.
+            if crate::platform::is_admin() {
+                a.splice(0..0, ["run-restricted".to_string(), "--".into(), postgres.display().to_string()]);
+                (std::env::current_exe().context("finding the pack binary")?, a)
+            } else {
+                (postgres, a)
+            }
+        }
         "redis" => (
             exe_in(&bin, "valkey-server"),
             // The Windows build is MSYS2-based: it wants forward slashes.
