@@ -20,7 +20,8 @@ concurrency:
 
 jobs:
   screenshots:
-    runs-on: ubuntu-24.04
+    # Same as the CI smoke test; Pack's MySQL needs libaio.so.1, which 24.04 renamed.
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
