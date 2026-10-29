@@ -1,4 +1,4 @@
-//! HTTP API on 127.0.0.1:7171, used by the CLI and the dashboard.
+//! HTTP API on 127.0.0.1:7171, used by the CLI and the desktop app.
 
 use crate::app::{Dump, Shared};
 use crate::sites::{self, SiteKind};
@@ -6,7 +6,7 @@ use crate::supervisor::Status;
 use crate::{caddy, download, logs, packages, paths, php, services, system};
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use axum::response::{Html, IntoResponse, Response};
+use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
@@ -37,7 +37,6 @@ fn ok() -> R {
 
 pub fn router(app: Shared) -> Router {
     Router::new()
-        .route("/", get(|| async { Html(include_str!("../ui/index.html")) }))
         .route("/api/status", get(status))
         .route("/api/sites", get(list_sites))
         .route("/api/sites/park", post(park))
@@ -74,29 +73,14 @@ pub fn router(app: Shared) -> Router {
         .with_state(app)
 }
 
-/// Origins allowed to use the API from a browser context: the desktop app
-/// (tauri://localhost on macOS/Linux, http(s)://tauri.localhost on Windows) and
-/// the dashboard itself. Anything else — e.g. a website trying to drive the
-/// local API — is refused.
-const APP_ORIGINS: &[&str] = &["tauri://localhost", "http://tauri.localhost", "https://tauri.localhost"];
-
+/// Browsers send an Origin header, the CLI, the desktop app and the PHP
+/// dump hook don't. The API has no browser client, so any request with an
+/// Origin — e.g. a website trying to drive the local API — is refused.
 async fn guard_origin(req: axum::extract::Request, next: axum::middleware::Next) -> Response {
-    use axum::http::{HeaderValue, Method, header};
-    let origin = req.headers().get(header::ORIGIN).and_then(|o| o.to_str().ok()).map(str::to_string);
-    let same = origin.as_deref().is_none_or(|o| o == format!("http://127.0.0.1:{PORT}") || o == format!("http://localhost:{PORT}"));
-    let app = origin.as_deref().is_some_and(|o| APP_ORIGINS.contains(&o));
-    if !same && !app {
+    if req.headers().contains_key(axum::http::header::ORIGIN) {
         return (StatusCode::FORBIDDEN, "origin not allowed").into_response();
     }
-    let preflight = req.method() == Method::OPTIONS;
-    let mut res = if preflight { StatusCode::NO_CONTENT.into_response() } else { next.run(req).await };
-    if let (true, Some(o)) = (app, origin) {
-        let h = res.headers_mut();
-        h.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, HeaderValue::from_str(&o).unwrap());
-        h.insert(header::ACCESS_CONTROL_ALLOW_METHODS, HeaderValue::from_static("GET, POST, DELETE, OPTIONS"));
-        h.insert(header::ACCESS_CONTROL_ALLOW_HEADERS, HeaderValue::from_static("content-type"));
-    }
-    res
+    next.run(req).await
 }
 
 #[derive(Deserialize)]
@@ -154,7 +138,8 @@ async fn list_sites(State(app): State<Shared>) -> R {
             v
         })
         .collect();
-    Ok(Json(json!({ "sites": list, "paths": cfg.paths, "tld": cfg.tld })))
+    let paths_display: Vec<String> = cfg.paths.iter().map(|p| paths::tilde(p)).collect();
+    Ok(Json(json!({ "sites": list, "paths": cfg.paths, "paths_display": paths_display, "tld": cfg.tld })))
 }
 
 #[derive(Deserialize)]

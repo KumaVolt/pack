@@ -181,7 +181,15 @@ pub fn spec(cfg: &Config, inst: &ServiceInstance) -> anyhow::Result<Spec> {
         ),
         "meilisearch" => (
             exe_in(&bin, "meilisearch"),
-            vec!["--db-path".into(), format!("{d}/data.ms"), "--http-addr".into(), format!("127.0.0.1:{port}"), "--no-analytics".into(), "--env".into(), "development".into(), "--experimental-dumpless-upgrade".into()],
+            {
+                let mut a = vec!["--db-path".into(), format!("{d}/data.ms"), "--http-addr".into(), format!("127.0.0.1:{port}"), "--no-analytics".into(), "--env".into(), "development".into()];
+                // Upgrades the database in place; 1.56 and later refuse to start with this flag.
+                let minor = installed_version(inst).and_then(|v| v.split('.').nth(1)?.parse::<u32>().ok());
+                if minor.is_some_and(|m| m < 56) {
+                    a.push("--experimental-dumpless-upgrade".into());
+                }
+                a
+            },
         ),
         "typesense" => (
             exe_in(&bin, "typesense-server"),

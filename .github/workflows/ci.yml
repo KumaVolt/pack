@@ -1,11 +1,12 @@
 # Builds pack on every OS and runs scripts/smoke.sh: installs the web server,
 # PHP, MySQL, PostgreSQL and Redis from the manifest and serves a real site over HTTPS.
+# Also builds the desktop app on every OS.
 name: CI
 
 on:
   push:
     branches: [main]
-    paths: &code ["daemon/**", "app/**", "scripts/smoke.sh", "Cargo.*", ".github/workflows/ci.yml"]
+    paths: &code ["daemon/**", "app/**", "scripts/smoke.sh", "scripts/linux-deps.sh", "Cargo.*", ".github/workflows/ci.yml"]
   pull_request:
     paths: *code
   workflow_dispatch:
@@ -44,3 +45,22 @@ jobs:
           ! ldd "$RUNNER_TEMP/x/bin/mysqld" | grep 'not found'
       - name: Smoke test
         run: scripts/smoke.sh target/release/pack
+
+  app:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, ubuntu-22.04, ubuntu-22.04-arm, windows-latest]
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Linux build dependencies
+        if: runner.os == 'Linux'
+        run: sudo scripts/linux-deps.sh
+      - name: Build
+        run: cargo build -p pack-app --locked

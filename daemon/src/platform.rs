@@ -71,7 +71,7 @@ pub fn slash(path: &Path) -> String {
 // ------------------------------------------------------------------ checks
 //
 // Some checks shell out (PowerShell, certutil), so results are cached briefly:
-// the dashboard polls status every couple of seconds.
+// the desktop app polls status every couple of seconds.
 
 static CHECKS: Mutex<Vec<(String, Instant, bool)>> = Mutex::new(Vec::new());
 
