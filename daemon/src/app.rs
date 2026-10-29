@@ -18,7 +18,7 @@ pub struct Dump {
     pub request: Option<String>,
     pub file: Option<String>,
     pub line: Option<u32>,
-    pub html: String,
+    /// VarDumper's CliDumper output.
     #[serde(default)]
     pub text: String,
 }
