@@ -106,5 +106,9 @@ with smtplib.SMTP("127.0.0.1", int(sys.argv[1])) as s:
         s.send_message(m)
 EOF
 
+# Never publish screenshots of a service that failed to start.
+down=$(curl -s http://127.0.0.1:7171/api/services | "$py" -c "import json,sys; print(' '.join(i['id'] for i in json.load(sys.stdin)['instances'] if (i['status'] or {}).get('state') != 'running'))")
+[ -z "$down" ] || { echo "Not running: $down"; exit 1; }
+
 "$py" "$here/screenshots.py" "$out"
 echo "SCREENSHOTS OK"
