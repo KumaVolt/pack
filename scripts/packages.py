@@ -304,6 +304,35 @@ def mysql_latest(series, t):
     return newest_published(tags, lambda v: mysql_url(v, t))
 
 
+# Oracle's Linux mysqld loads libaio.so.1 and libnuma.so.1 from the system.
+# Ubuntu 24.04 renamed libaio (libaio.so.1t64) and slim installs lack libnuma,
+# so ship Ubuntu 22.04's copies: (Ubuntu pool path, {deb arch: sha256}).
+MYSQL_LIBS = {
+    "libaio.so.1": ("liba/libaio/libaio1_0.3.112-13build1", {
+        "amd64": "2dcfe0b49d7cccfbf1bd6a3f627cf44bea9f51fb32f7e0e552a0df75698e0d27",
+        "arm64": "1bcb0d9c08aa35298741b1c68904844e9b71ebf64f15b3e05e6ec6f3fa01d93b",
+    }),
+    "libnuma.so.1": ("n/numactl/libnuma1_2.0.14-3ubuntu2", {
+        "amd64": "0721c89001fbbd1ada23e89da5d60e762763c1a7b3dc814a2e9a518480a8043d",
+        "arm64": "ca67a774b20ed639361715ef0981d236f294ff2987579b3d18faede67c3a9152",
+    }),
+}
+
+
+def ubuntu_lib(soname, t, dest):
+    """Copy `soname` out of its pinned Ubuntu 22.04 package into `dest`."""
+    pool, shas = MYSQL_LIBS[soname]
+    arch = t.go
+    mirror = "https://archive.ubuntu.com/ubuntu" if arch == "amd64" else "https://ports.ubuntu.com/ubuntu-ports"
+    tmp = Path(tempfile.mkdtemp())
+    deb = download(f"{mirror}/pool/main/{pool}_{arch}.deb", tmp / "lib.deb")
+    if hashlib.sha256(deb.read_bytes()).hexdigest() != shas[arch]:
+        raise SystemExit(f"checksum mismatch for {deb.name} ({soname}, {arch})")
+    run(["ar", "x", str(deb)], cwd=tmp)
+    untar(next(tmp.glob("data.tar.*")), tmp / "x")
+    shutil.copy2(next((tmp / "x").rglob(soname)), dest / soname)  # follows the soname symlink
+
+
 def mysql_build(series, version, t, root):
     tmp = Path(tempfile.mkdtemp())
     url = mysql_url(version, t)
@@ -314,6 +343,10 @@ def mysql_build(series, version, t, root):
         shutil.rmtree(p, ignore_errors=True) if p.is_dir() else p.unlink(missing_ok=True)
     for pdb in root.rglob("*.pdb"):
         pdb.unlink()
+    if t.os == "linux":
+        # mysqld's RUNPATH is $ORIGIN/../lib/private, next to Oracle's own bundled libs.
+        for soname in MYSQL_LIBS:
+            ubuntu_lib(soname, t, root / "lib/private")
 
 
 PG_TRIPLE = {
