@@ -28,5 +28,18 @@ jobs:
         run: cargo test -p pack
       - name: Build
         run: cargo build --release -p pack
+      # TEMPORARY (drop before merge): test this branch's MySQL package, not the published one.
+      - name: Build this branch's MySQL package
+        if: startsWith(matrix.runner, 'ubuntu-')
+        run: |
+          arch=$([ "$(uname -m)" = aarch64 ] && echo arm64 || echo x86_64)
+          python3 scripts/packages.py build mysql 8.4 "linux-$arch" --version 8.4.13 --out "$RUNNER_TEMP/pkgs"
+          curl -fsSL https://github.com/KumaVolt/pack/releases/download/manifest/manifest.json -o "$RUNNER_TEMP/manifest.json"
+          python3 scripts/packages.py merge --manifest "$RUNNER_TEMP/manifest.json" --dir "$RUNNER_TEMP/pkgs"
+          echo "PACK_MANIFEST=$RUNNER_TEMP/manifest.json" >> "$GITHUB_ENV"
+          ldconfig -p | grep -E 'libaio|libnuma' || echo "no system libaio/libnuma"
+          mkdir "$RUNNER_TEMP/x" && tar -xzf "$RUNNER_TEMP"/pkgs/*.tar.gz -C "$RUNNER_TEMP/x" ./bin/mysqld ./lib/private
+          ldd "$RUNNER_TEMP/x/bin/mysqld" | grep -E 'libaio|libnuma'
+          ! ldd "$RUNNER_TEMP/x/bin/mysqld" | grep 'not found'
       - name: Smoke test
         run: scripts/smoke.sh target/release/pack
