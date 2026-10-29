@@ -51,14 +51,12 @@ pub fn build(sites: &[(String, String)]) -> Result<TrayIcon, Box<dyn std::error:
         &MenuItem::with_id("restart", "Restart services", true, None),
         &MenuItem::with_id("quit", "Quit (sites keep running)", true, None),
     ])?;
+    let builder = TrayIconBuilder::new().with_menu(Box::new(menu)).with_tooltip("Pack");
     // macOS: monochrome template icon that follows the menu bar's colour.
     // Elsewhere the coloured app icon reads better on light and dark taskbars.
-    let (icon, template) = if cfg!(target_os = "macos") {
-        (rgba(include_bytes!("../icons/tray.png")), true)
-    } else {
-        (rgba(include_bytes!("../icons/64x64.png")), false)
-    };
-    let builder = TrayIconBuilder::new().with_menu(Box::new(menu)).with_tooltip("Pack");
-    let builder = if template { builder.with_icon_templated(icon) } else { builder.with_icon(icon) };
+    #[cfg(target_os = "macos")]
+    let builder = builder.with_icon_templated(rgba(include_bytes!("../icons/tray.png")));
+    #[cfg(not(target_os = "macos"))]
+    let builder = builder.with_icon(rgba(include_bytes!("../icons/64x64.png")));
     Ok(builder.build()?)
 }
