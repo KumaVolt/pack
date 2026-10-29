@@ -27,13 +27,18 @@ cleanup() {
 trap cleanup EXIT
 
 "$pack" install --no-agent --no-system --minimal
+# PostgreSQL refuses to run with administrator rights, which Windows CI
+# runners have (normal UAC sessions don't), so skip it there.
+pg=yes
+case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) net session >/dev/null 2>&1 && pg= && echo "Skipping PostgreSQL: running as Windows administrator";; esac
+
 "$pack" service add mysql
-"$pack" service add postgres
+[ -n "$pg" ] && "$pack" service add postgres
 "$pack" service add redis
 
 port() { curl -s http://127.0.0.1:7171/api/services | "$py" -c "import json,sys; print(next(i['port'] for i in json.load(sys.stdin)['instances'] if i['kind']=='$1'))"; }
 mysql_port=$(port mysql)
-pg_port=$(port postgres)
+pg_port=$([ -n "$pg" ] && port postgres || true)
 redis_port=$(port redis)
 echo "mysql :$mysql_port  postgres :$pg_port  redis :$redis_port"
 
@@ -42,7 +47,7 @@ cat > "$work/hello/public/index.php" <<EOF
 <?php
 \$db = new PDO('mysql:host=127.0.0.1;port=$mysql_port', 'root', '');
 \$mysql = \$db->query('select version()')->fetchColumn();
-\$pg = (new PDO('pgsql:host=127.0.0.1;port=$pg_port;dbname=postgres', 'root', ''))->query('show server_version')->fetchColumn();
+\$pg = '$pg_port' === '' ? 'skipped' : (new PDO('pgsql:host=127.0.0.1;port=$pg_port;dbname=postgres', 'root', ''))->query('show server_version')->fetchColumn();
 \$r = fsockopen('127.0.0.1', $redis_port);
 fwrite(\$r, "PING\r\n");
 \$redis = trim(fgets(\$r));
@@ -57,7 +62,7 @@ echo "https: $out"
 echo "$out" | grep -q "php=8.4" || { echo "PHP did not answer over HTTPS"; exit 1; }
 echo "$out" | grep -q "redis=+PONG" || { echo "Redis check failed"; exit 1; }
 echo "$out" | grep -q "mysql=[0-9]" || { echo "MySQL check failed"; exit 1; }
-echo "$out" | grep -q "pg=[0-9]" || { echo "PostgreSQL check failed"; exit 1; }
+[ -z "$pg" ] || echo "$out" | grep -q "pg=[0-9]" || { echo "PostgreSQL check failed"; exit 1; }
 code=$(curl -s -o /dev/null -w '%{http_code}' -m 10 --resolve "hello.test:8080:127.0.0.1" http://hello.test:8080/)
 echo "http: $code (expect a redirect to https)"
 [ "$code" = 308 ] || [ "$code" = 301 ] || [ "$code" = 302 ] || { echo "HTTP did not redirect"; exit 1; }
