@@ -1,5 +1,5 @@
 # Builds pack on every OS and runs scripts/smoke.sh: installs the web server,
-# PHP, MySQL and Redis from the manifest and serves a real site over HTTPS.
+# PHP, MySQL, PostgreSQL and Redis from the manifest and serves a real site over HTTPS.
 name: CI
 
 on:

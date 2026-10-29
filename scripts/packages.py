@@ -366,6 +366,11 @@ def postgres_build(series, version, t, root):
     tmp = Path(tempfile.mkdtemp())
     untar(download(url, tmp / "pg.tar.gz"), root, strip=1)
     shutil.rmtree(root / "include", ignore_errors=True)
+    if t.os == "linux":
+        # These bundled Debian 12 copies need glibc 2.36; every Ubuntu has its own
+        # (new enough: ICU wants GLIBCXX_3.4.30, which 22.04's libstdc++ has).
+        for lib in ["libstdc++.so.6", "libcrypt.so.1", "libexpat.so.1"]:
+            (root / "lib" / lib).unlink(missing_ok=True)
 
 
 def redis_latest(series, t):
@@ -595,6 +600,27 @@ def cmd_plan(args):
     print(json.dumps({"include": matrix}))
 
 
+# Linux packages must run on Ubuntu 22.04 (glibc 2.35) and later.
+GLIBC_FLOOR = [2, 35]
+
+
+def check_glibc(root):
+    """Fail if any ELF file in the package needs a newer glibc than GLIBC_FLOOR."""
+    if not shutil.which("readelf"):
+        print("  (no readelf on this host; skipping the glibc check)", file=sys.stderr)
+        return
+    for f in sorted(root.rglob("*")):
+        if f.is_symlink() or not f.is_file():
+            continue
+        with open(f, "rb") as fh:
+            if fh.read(4) != b"\x7fELF":
+                continue
+        out = subprocess.run(["readelf", "-V", "-W", str(f)], capture_output=True, text=True).stdout
+        need = max((vkey(v) for v in re.findall(r"\bGLIBC_(\d+\.\d+(?:\.\d+)?)\b", out)), default=[])
+        if need > GLIBC_FLOOR:
+            raise SystemExit(f"{f.relative_to(root)} needs glibc {'.'.join(map(str, need))}; Pack supports {'.'.join(map(str, GLIBC_FLOOR))}+")
+
+
 def cmd_build(args):
     pkg = PACKAGES[args.name]
     t = T(args.target)
@@ -611,6 +637,8 @@ def cmd_build(args):
     root = Path(tempfile.mkdtemp()) / "pkg"
     root.mkdir()
     pkg["build"](args.series, version, t, root)
+    if t.os == "linux":
+        check_glibc(root)
     (root / ".pack-package").write_text(json.dumps({"name": args.name, "series": args.series, "version": version, "target": args.target}))
     asset = f"{args.name}-{version}-{args.target}.tar.gz"
     # System tar is much faster than tarfile for the big ones (MySQL, MongoDB).
