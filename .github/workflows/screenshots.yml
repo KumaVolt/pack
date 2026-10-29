@@ -1,18 +1,21 @@
 # Retakes the README screenshots (docs/screenshots) with scripts/screenshots.sh
-# whenever the UI changes, and commits them if they look different.
+# whenever the UI changes, and commits them if they look different. On pull
+# requests it only uploads them, so UI changes can be looked at before merging.
 name: Screenshots
 
 on:
   push:
     branches: [main]
-    paths: ["daemon/**", "scripts/screenshots.*", ".github/workflows/screenshots.yml"]
+    paths: &ui ["daemon/**", "scripts/screenshots.*", ".github/workflows/screenshots.yml"]
+  pull_request:
+    paths: *ui
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: screenshots
+  group: screenshots-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -39,6 +42,7 @@ jobs:
           name: screenshots
           path: docs/screenshots
       - name: Commit
+        if: github.event_name != 'pull_request'
         run: |
           git add docs/screenshots
           if git diff --cached --quiet; then echo "No changes"; exit 0; fi
